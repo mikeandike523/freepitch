@@ -31,6 +31,9 @@ def create_synth(
     )
 
 
+# Not used in real world examples
+# event_scheduler will take in separate factories
+# for creating synth and ADSR instances
 def create_synth_with_adsr(
     sample_rate: int,
     initial_custom_state: S,
