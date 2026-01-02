@@ -11,7 +11,6 @@ S = TypeVar("S")
 class ProcessCallback(Protocol[S]):
     def __call__(
         self,
-        *,
         sample_rate: int,
         n: int,
         num_samples: int,
@@ -20,7 +19,7 @@ class ProcessCallback(Protocol[S]):
 
 
 class ResetCallback(Protocol[S]):
-    def __call__(self, *, state: S) -> None: ...
+    def __call__(self, state: S) -> None: ...
 
 
 class Synth(Protocol):
@@ -33,9 +32,9 @@ class Synth(Protocol):
 @dataclass(slots=True)
 class CallbackSynth(Generic[S]):
     _sample_rate: int
+    state: S = field()   # user state kept separate
     _process_cb: ProcessCallback[S]
     _reset_cb: Optional[ResetCallback[S]] = None
-    state: S = field()   # user state kept separate
     n: int = 0           # internal counter since first process() or reset()
 
     @property
@@ -61,14 +60,13 @@ class CallbackSynth(Generic[S]):
     def create(
         cls,
         sample_rate: int,
-        process_callback: ProcessCallback[S],
-        reset_callback: Optional[ResetCallback[S]] = None,
-        *,
         initial_state: S,
+        process_callback: ProcessCallback[S],
+        reset_callback: Optional[ResetCallback[S]] = None
     ) -> "CallbackSynth[S]":
         return cls(
             _sample_rate=sample_rate,
+            state=initial_state,
             _process_cb=process_callback,
             _reset_cb=reset_callback,
-            state=initial_state,
         )

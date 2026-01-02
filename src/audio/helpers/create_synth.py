@@ -25,9 +25,9 @@ def create_synth(
     """Thin wrapper around CallbackSynth.create for a consistent API surface."""
     return CallbackSynth.create(
         sample_rate,
+        initial_custom_state,
         process_callback,
         reset_callback,
-        initial_state=initial_custom_state,
     )
 
 
@@ -48,20 +48,25 @@ def create_synth_with_adsr(
     """
 
     def wrapped_process(
-        *,
         sample_rate: int,
         n: int,
         num_samples: int,
         state: ADSRAugmentedState[S],
     ) -> AudioBuffer:
-        return process_callback(
+        
+        frames = process_callback(
             sample_rate=sample_rate,
             n=n,
             num_samples=num_samples,
             state=state.custom,
         )
 
-    def wrapped_reset(*, state: ADSRAugmentedState[S]) -> None:
+        adsr_values = state.adsr.generate(num_samples)
+
+        return tuple(map(lambda d: (d[0][0]*d[1], d[0][1]*d[1]), zip(frames, adsr_values)))
+
+
+    def wrapped_reset(state: ADSRAugmentedState[S]) -> None:
         if reset_callback is not None:
             reset_callback(state=state.custom)
         state.adsr.reset()
@@ -70,7 +75,7 @@ def create_synth_with_adsr(
 
     return CallbackSynth.create(
         sample_rate,
+        augmented_state,
         wrapped_process,
         wrapped_reset,
-        initial_state=augmented_state,
     )
