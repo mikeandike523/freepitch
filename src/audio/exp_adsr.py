@@ -1,17 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum, auto
 from math import exp
-from typing import Tuple
+from typing import Callable, List, Optional, Tuple
+from src.audio.adsr_types import ADSRStage
 
 
-class ADSRStage(Enum):
-    IDLE = auto()
-    ATTACK = auto()
-    DECAY = auto()
-    SUSTAIN = auto()
-    RELEASE = auto()
 
 
 @dataclass(slots=True)
@@ -23,6 +17,8 @@ class ExpADSR:
     release_s: float
     num_tau: float = 5.0
 
+    enter_idle_handlers: List[Callable[[],None]] = []
+
     stage: ADSRStage = ADSRStage.IDLE
     value: float = 0.0
 
@@ -32,6 +28,9 @@ class ExpADSR:
     _start: float = 0.0   # captured start value at segment entry
     _target: float = 0.0  # segment target
     _tau: float = 1.0     # segment time constant in samples
+
+    def register_enter_idle_handler(self,handler: Callable[[],None]):
+        self.enter_idle_handlers.append(handler)
 
     def reset(self) -> None:
         self.stage = ADSRStage.IDLE
@@ -48,6 +47,9 @@ class ExpADSR:
     def note_off(self) -> None:
         if self.stage is not ADSRStage.IDLE:
             self._enter_release()
+
+    def get_stage(self) -> ADSRStage:
+        return self.stage
 
     def generate(self, num_samples: int) -> Tuple[float, ...]:
         out = [0.0] * num_samples
@@ -86,6 +88,9 @@ class ExpADSR:
 
     def _enter_segment(self, stage: ADSRStage, target: float, seconds: float) -> None:
         self.stage = stage
+        if stage == ADSRStage.IDLE:
+            for handler in self.enter_idle_handlers:
+                handler()
         self._i = 0
         self._n = self._secs_to_samples(seconds)
         self._start = self.value          # capture CURRENT value: guarantees continuity

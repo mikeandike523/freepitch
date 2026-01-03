@@ -1,5 +1,140 @@
+from collections import defaultdict
+import copy
+from dataclasses import dataclass
+from enum import Enum, auto
+import math
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from src.audio.adsr_types import ADSR, ADSRStage
+from src.audio.core import CallbackSynth
+
+@dataclass(slots=True)
+class Voice:
+    _running: bool
+    _synth: CallbackSynth
+    _adsr: Optional[ADSR] = None
+    _last_note_on_sample_index=0 # No need for Optional type, even though its more correct
+    _last_note_off_sample_index=0 # No need for Optional type, even though its more correct
+
+
+    def __init__(
+        self,
+        synth: CallbackSynth,
+        adsr: Optional[ADSR] = None
+    ):
+        self._synth = synth
+        self._adsr = adsr
+        self._running = False
+
+        def make_self_not_running():
+            self._running=False
+
+        self._adsr.register_enter_idle_handler(make_self_not_running)
+
+    def note_on(self, data, global_sample_index:Optional[int]=None):
+        if self._adsr:
+            self._adsr.reset()
+            self._adsr.note_on()
+        self._synth.set_state(data)
+        self._synth.reset()
+        
+        self._running = True
+
+        if global_sample_index is not None:
+            self._last_note_on_sample_index=global_sample_index
+
+    def note_off(self, global_sample_index:Optional[int]=None):
+        if self._adsr:
+            self._adsr.note_off()
+        if global_sample_index is not None:
+            self._last_note_off_sample_index=global_sample_index
+
+    def process(self,num_samples: int):
+        frames = self._synth.process(num_samples)
+        envelope = tuple(1.0 for _ in range(len(frames)))
+        if self._adsr:
+            envelope = self._adsr.generate(num_samples)
+        multiplied = tuple(
+            (v*l,v*r) for (v, (l,r)) in zip(envelope, frames)
+        )
+        return multiplied
+    
+    def is_running(self) -> bool:
+        return self._running
+    
+    def get_last_note_on_sample_index(self) -> int:
+        return self._last_note_on_sample_index
+    
+    def get_last_note_off_sample_index(self) -> int:
+        return self._last_note_off_sample_index
+    
+    def get_adsr_stage(self) -> Optional[ADSRStage]:
+        if not self._adsr:
+            return None
+        return self._adsr.get_stage()
+    
+
+class EventKind(Enum):
+    NOTE_ON=auto()
+    NOTE_OFF=auto()
+
+D=TypeVar["D"]
+
+@dataclass(slots=True)
+class Event[D]:
+    kind: EventKind
+    data: D
+
+
+
+@dataclass(slots=True)
+class EventBin:
+    events: Dict[int, List[Event]] # sort events by note id
+
+    def __init__(self, events: Optional[Dict[int, List[Event]]] = None):
+        self.events = {}
+        if events:
+            self.events = copy.deepcopy(events)
+
+    def add_event(self, event:Event):
+        note_id = event.note_id
+
+        if note_id not in self.events:
+            self.events[note_id] = [event]
+        else:
+            self.events[note_id].append(event)
+        
+
+
+    def get_simplified(self) -> "EventBin":
+        """
+        Generate a new, simplified bin that adheres to our simultaneity disambiguation rules
+        """
+
+        simple_events:Dict[int, List[Event]] = defaultdict(list)
+
+        # under the assumption that note_id uniquely identifies a value of "data"
+        # This is up to library user to uphold
+        
+        for note_id, events_for_note_id in self.events.items():
+            offs_for_note_id = tuple(filter(events_for_note_id, lambda evt: evt.kind == EventKind.NOTE_OFF))
+            ons_for_note_id = tuple(filter(events_for_note_id, lambda evt: evt.kind == EventKind.NOTE_ON))
+            if offs_for_note_id:
+                simple_events[note_id].append(copy.deepcopy(offs_for_note_id[0])) # Once again, assume that an ID uniquely corresponds to unique data
+            if ons_for_note_id:
+                simple_events[note_id].append(copy.deepcopy(ons_for_note_id[0])) 
+            
+
+        return EventBin(
+            simple_events
+        )
+        
+    
+@dataclass(slots=True)
 class EventScheduler:
     """
+
+    A scheduler for a specific track
+
     Handles note on and off events
     Can handle up to the specified number of simultaneous voices
     You provide a function that produces a synth (no ADSR): `synth_factory`
@@ -16,24 +151,164 @@ class EventScheduler:
             note_off events immediately free the voice
             So a steal will occur only to note_on when all voices are active
             It will simply steal the oldest note on
+
+
+    Event simultaneity:
+
+    If two events occur on the same sample index (i=floor(time*sampleRate))
+
+    We do the following logic:
+
+    Collect the set of events at that time and group by id:
+
+    For each id "bin":
+
+    Determine if there is at least one note_off
+    Determine if there is at least one note_on
+
     
-    Algorithm for achieveing time accuracy:
-        Many synths do not have a well-defined seek() function
-        Particularly, if the synth is very stateful
+    If no note_on, just process one note_off event
 
-        So... suppose that we have a note_on event
-        that occurs X samples after the start of the current processing block
-        We simply start a voice (reset it), and then silently generate X samples
-        and discard them (a.k.a. "burn X samples"), then, we generate STEP_SIZE - X samples
-        and mix at the correct location into the block buffer 
+    If at least one note_on, process one note_off, followed by one note_on and no more
 
-        Note:
-            Make sure note reset and ADSR (if present) reset are synchronized
-        Note:
-            Mid-buffer note-offs are easier to handle as we simply generate more
-            samples from the ongoing stateful voice
+    Note:
+
+    We bin only a single, precise sample index by default
+
+    It is recommend, when rounding, to round down note_on and round_up note_off events 
+
+    note_on:  i= floor(t*sample_rate)
+    note_off: i=ceil(t*sample_rate)
+
+    This is essentially a binning width of 1
+
+    But we will optionally allow an argument of a large binning width (e.g. 4 samples)
+
+    so we will still ceil note_offs, and floor note_ons, but quantizing to a grid of more samples (e.g. 4)
+
+    This can also be done at composition time as an extra processing layer, but
+    might as well just include the functionality here and avoid needing to do it upwards
+    in the pipeline even though this is non-traditional
+
+    More notes about simultaneity:
+
+    Because the scheduler is offline, we have the luxury of not needing to buffer
+
+    We can go sample-by-sample and process events as they occur
 
 
     """
 
-    # todo
+    _create_new_synth: Callable[[], CallbackSynth]
+    _create_new_adsr: Callable[[], Optional[ADSR]]
+    _is_using_adsr: bool
+    _sample_rate: int
+    _max_voices: int
+    _tick_size: int
+
+    voices: Tuple[Voice, ...]
+
+    event_bins: Dict[int, EventBin] = defaultdict(lambda: EventBin(None))
+
+    def __init__(
+            self,
+            sample_rate: int,
+            max_voices: int,
+            create_new_synth: Callable[[], CallbackSynth],
+            create_new_adsr: Optional[Callable[[],ADSR]]=None,
+            tick_size: Optional[int]=4, # Default to a small value > 1 to avoid floating point issues
+
+    ):
+        self._create_new_synth = create_new_synth
+        self._create_new_adsr = lambda: None if create_new_adsr is None else create_new_adsr
+        self._sample_rate = sample_rate
+        self._max_voices = max_voices
+        self._tick_size = tick_size
+        self._is_using_adsr = create_new_adsr is not None
+
+        self.voices = tuple(
+
+            Voice(
+                sample_rate=sample_rate,
+                synth=self._create_new_synth(),
+                adsr=self._create_new_adsr() # Will evaluate to None if no create_new_adsr function was provided in constructor
+            )
+
+            for _ in range(len(self._max_voices))
+
+        )
+
+
+
+    def add_event[D](self, time: float, kind: EventKind, data: D):
+        quantized_sample_index = None
+        if kind == EventKind.NOTE_ON:
+            quantized_sample_index = math.floor(time*self._sample_rate*self._tick_size) / self._tick_size
+        else:
+            quantized_sample_index = math.ceil(time*self._sample_rate*self._tick_size) / self._tick_size
+        self.event_bins[quantized_sample_index].add_event(Event(
+            kind=kind,
+            data=data
+        ))
+        
+
+    # Some convenience helpers
+
+    def _get_running_voice_count(self):
+        return len(tuple(True for v in self.voices if v.is_running()))
+    
+    def _get_free_voice_count(self):
+        return self._max_voices - self._get_running_voice_count()
+    
+    def _get_free_voices(self):
+        return tuple(filter(lambda x: x.is_running(), self.voices))
+    
+    def _get_or_steal_voice(self):
+        free_voices = self._get_free_voices()
+        if free_voices:
+            return free_voices[0]
+        if not self._is_using_adsr:
+            # Simply use the oldest
+            voices_sorted = sorted(self.voices, key=lambda voice: voice.get_last_note_on_sample_index())
+            return voices_sorted[0]
+        else:
+            release_voices: Tuple[Voice, ...] = tuple(filter(self.voices, lambda voice: voice.get_adsr_stage()==ADSRStage.RELEASE))
+            if release_voices:
+                release_voices_sorted = sorted(release_voices, key=lambda voice: voice.get_last_note_off_sample_index())
+                return release_voices_sorted[0]
+            # Simply use the oldest
+            voices_sorted = sorted(self.voices, key=lambda voice: voice.get_last_note_on_sample_index())
+            return voices_sorted[0]
+        
+    # Naive approach
+    # go tick by tick
+    # In the future, will want to write algorithms
+    # to mark regions of silence and skip
+    def render(self,
+               silence_amplitude=10 ** (-60 / 20),
+               max_tail_seconds=2):
+        
+        # Step 1. Perform disambiguation rules
+
+        simplified_event_bins = {
+            i: b.get_simplified() for (i, b) in self.event_bins.items()
+        }
+
+        # Step 2. 
+        # Ensure well-formed data
+        # Make sure there are no straggling active voices by the time the last (simplified) event is processed
+
+        # Step 3. 
+
+        # Compute duration, given the amplitude that is considered silence, and worst-case the max_tail in seconds
+        # Note: for adsr-controlled, if we detect a state where all voices are idle after the last note_off, then we can just end the render there
+        # (This often occurs, since ADSR has an idle condition, and we used "register_enter_idle_handler" on the ADSR to automatically shut off the voice)
+
+        # Step 4.
+
+        # Return data about duration, and a generator, so we can lazy evaluate for progress bars / progress messages
+
+
+        # Sample generation:
+        # Can do this in a separate function or a closure in this function
+        # It progressively generates samples, looking for new events in the upcoming bin, which it can identify by tracking "exhausted" bins

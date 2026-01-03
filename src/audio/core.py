@@ -22,9 +22,9 @@ class ResetCallback(Protocol[S]):
     def __call__(self, state: S) -> None: ...
 
 
-class Synth(Protocol):
+class Synth(Protocol[S]):
     n: int
-
+    def set_state(self, new_state: S) -> None: ...
     def process(self, num_samples: int) -> AudioBuffer: ...
     def reset(self) -> None: ...
 
@@ -40,6 +40,9 @@ class CallbackSynth(Generic[S]):
     @property
     def sample_rate(self) -> int:
         return self._sample_rate
+    
+    def set_state(self, new_state: S):
+        self.state = new_state
 
     def process(self, num_samples: int) -> AudioBuffer:
         out = self._process_cb(
