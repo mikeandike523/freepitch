@@ -6,6 +6,7 @@ from src.audio.exp_adsr import ExpADSR
 import math
 from src.audio.helpers.create_synth import create_synth
 from src.audio.event_scheduler import EventScheduler
+import re
 
 SAMPLE_RATE = 48_000
 
@@ -14,7 +15,7 @@ REFERENCE_A_FREQ = 440
 
 # C5 is 3 semitones above A4
 # The -1 makes it go to the octave below
-REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** (3 / 12 - 1)
+REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** (8 / 31 - 1)
 
 
 @dataclass(slots=False)
@@ -24,9 +25,86 @@ class CustomState:
     note_id: int
 
 
-SCALE = sorted((1, 6 / 5, 5 / 4, 9 / 8, 3 / 4, 4 / 5, 5/3))
+SCALE = tuple(2 ** (i / 31) for i in range(31))
 
-print(SCALE)
+NAMES_SHARPWARD = """
+C
+Ct C# C#t Cx
+D
+Dt D# D#t Dx
+E Et E#
+F
+Ft F# F#t Fx
+G
+Gt G# G#t Gx
+A
+At A# A#t Ax
+B Bt B# 
+""".strip()
+
+NAMES_FLATWARDS = """
+Cd Cb
+B
+Bd Bb Bdb Bbb
+A
+Ad Ab Adb Abb
+G
+Gd Gb Gdb Gbb
+F Fd Fb
+E
+Ed Eb Edb Ebb
+D
+Dd Db Ddb Dbb
+C
+""".strip()
+
+NAMES_SHARPWARD = re.sub(r"\s+", " ", NAMES_SHARPWARD)
+NAMES_FLATWARDS = re.sub(r"\s+", " ", NAMES_FLATWARDS)
+
+NAMES_SHARPWARD = NAMES_SHARPWARD.split(" ")
+NAMES_FLATWARDS = NAMES_FLATWARDS.split(" ")
+
+NAMES_FLATWARDS = list(reversed(NAMES_FLATWARDS))
+
+NAMES_SHARPWARD_TO_INDEX = {}
+for i, name in enumerate(NAMES_SHARPWARD):
+    NAMES_SHARPWARD_TO_INDEX[name] = i
+
+NAMES_FLATWARDS_TO_INDEX = {}
+for i, name in enumerate(NAMES_FLATWARDS):
+    NAMES_FLATWARDS_TO_INDEX[name] = i
+
+NAMES_TO_INDEX = {}
+
+for name, i in NAMES_SHARPWARD_TO_INDEX.items():
+    NAMES_TO_INDEX[name] = i
+
+for name, i in NAMES_FLATWARDS_TO_INDEX.items():
+    NAMES_TO_INDEX[name] = i
+
+
+@dataclass(slots=True)
+class EDO31NoteName:
+    text: str
+    octave: int
+
+    def __init__(self, text: str, octave: int):
+        if text not in NAMES_SHARPWARD and text not in NAMES_FLATWARDS:
+            raise ValueError(f"Invalid note name: {text}")
+        self.text = text
+        self.octave = octave
+
+    def get_index_in_octave(self) -> int:
+        return NAMES_TO_INDEX[self.text]
+
+    def get_note_id(self):
+        return self.octave * 31 + self.get_index_in_octave()
+
+    def get_pitch(self):
+        return (2 ** (self.get_index_in_octave() / 31 - (4 - self.octave))) * REFERENCE_C_FREQ
+
+    def __repr__(self):
+        return f"{self.text}{self.octave}"
 
 
 # Just the waveform part
@@ -105,16 +183,37 @@ track2 = EventScheduler(
     SAMPLE_RATE, 16, create_new_synth_track2, create_new_adsr_track2, 1, 512
 )
 
-for index, ratio in enumerate(SCALE):
-    pitch = REFERENCE_C_FREQ * ratio
-    track1.add_note(
-        index * 0.25, 0.25, CustomState(pitch=pitch, note_id=index, volume=1)
-    )
+melody = [
+    ("C", 4, 0.25),
+    ("E", 4, 0.25),
+    ("G", 4, 0.25),
+    ("B", 4, 0.25),
+    ("A", 4, 0.25),
+    ("G", 4, 0.25),
+    ("E", 4, 0.25),
+    ("C", 4, 0.25),
+    ("D", 4, 0.25),   
+    ("F", 4, 0.25),
+    ("A", 4, 0.25),
+    ("C", 5, 0.25),
+    ("B", 4, 0.25*4),
+]
 
+
+acc=0
+for (text, octave, dur) in melody:
+    note_name = EDO31NoteName(text, octave)
+    track1.add_note(
+        acc,
+        dur,
+        CustomState(
+            pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume=1
+        ),
+    )
+    acc+=dur
 
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
-
 
 
 frames = mix(((0.5, frames1), (0.5, frames2)))
