@@ -287,17 +287,7 @@ to throw error if not true.
     def _get_free_voices(self):
         return tuple(filter(lambda x: not x.is_running(), self.voices))
 
-    def _get_or_steal_voice(self, note_id: Optional[int] = None) -> Voice:
-        # Detect retrigger
-        rt_voices = tuple(
-            filter(
-                lambda voice: voice.is_running()
-                and voice.get_current_note_id() == note_id,
-                self.voices,
-            )
-        )
-        if rt_voices:
-            return rt_voices[0]
+    def _get_or_steal_voice(self) -> Voice:
         free_voices = self._get_free_voices()
         if free_voices:
             return free_voices[0]
@@ -409,7 +399,7 @@ to throw error if not true.
                 for note_id, events_for_note_id in event_bin.events.items():
                     for event in events_for_note_id:
                         if event.kind == EventKind.NOTE_ON:
-                            voice = self._get_or_steal_voice(note_id)
+                            voice = self._get_or_steal_voice()
                             voice.note_on(
                                 note_id, event.data, global_sample_index=bin_index
                             )
