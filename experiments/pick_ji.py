@@ -128,19 +128,29 @@ def generate_folded_unique_ratios(primes: List[int], max_int: int) -> List[Fract
     return sorted(folded)
 
 
-def bin_items(items: List[RatioItem], delta_cents: float) -> Dict[str, List[RatioItem]]:
-    """Bin by cents, then sort within each bin by (N+D) (cleaner first)."""
+def bin_items(items: List[RatioItem], delta_cents: float, optimize: str = "max") -> Dict[str, List[RatioItem]]:
+    """Bin by cents, then sort within each bin.
+
+    optimize: 'sum' -> sort by N+D (complexity) first;
+              'max' -> sort by max(N,D) first (default).
+    """
     bins: Dict[int, List[RatioItem]] = {}
     for it in items:
         k = int(math.floor(it.cents / delta_cents))
         bins.setdefault(k, []).append(it)
+
+    def sort_key(x: RatioItem):
+        if optimize == "sum":
+            return (x.complexity, x.cents, x.num, x.den)
+        # default: minimize max(N,D), then N+D, then cents
+        return (max(x.num, x.den), x.complexity, x.cents, x.num, x.den)
 
     labeled: Dict[str, List[RatioItem]] = {}
     for k in sorted(bins.keys()):
         lo = k * delta_cents
         hi = (k + 1) * delta_cents
         label = f"{lo:.1f}–{hi:.1f}"
-        labeled[label] = sorted(bins[k], key=lambda x: (x.complexity, x.cents, x.num, x.den))
+        labeled[label] = sorted(bins[k], key=sort_key)
 
     return labeled
 
@@ -152,7 +162,7 @@ def _fmt_item_line(it: RatioItem, indent: str = "  ") -> str:
     )
 
 
-def format_text(items: List[RatioItem], binned: Dict[str, List[RatioItem]], max_per_bin: int | None, delta_cents: float) -> str:
+def format_text(items: List[RatioItem], binned: Dict[str, List[RatioItem]], max_per_bin: int | None, delta_cents: float, optimize: str = "max") -> str:
     lines: List[str] = []
 
     # Small summary header
@@ -190,10 +200,16 @@ def format_text(items: List[RatioItem], binned: Dict[str, List[RatioItem]], max_
             hi = (k + 1) * delta_cents
             lines.append(f"  - missing: {lo:.1f}–{hi:.1f}c")
     else:
-        lines.append(f"  - all {num_bins} bins covered ({delta_cents}c steps). Lowest N+D ratio per bin:")
+        if optimize == "sum":
+            lines.append(f"  - all {num_bins} bins covered ({delta_cents}c steps). Lowest N+D ratio per bin:")
+            keyfn = lambda x: (x.complexity, x.cents, x.num, x.den)
+        else:
+            lines.append(f"  - all {num_bins} bins covered ({delta_cents}c steps). Lowest max(N,D) ratio per bin:")
+            keyfn = lambda x: (max(x.num, x.den), x.complexity, x.cents, x.num, x.den)
+
         for k in range(num_bins):
             bin_list = raw_bins[k]
-            best = sorted(bin_list, key=lambda x: (x.complexity, x.cents, x.num, x.den))[0]
+            best = sorted(bin_list, key=keyfn)[0]
             lo = k * delta_cents
             hi = (k + 1) * delta_cents
             lines.append(f"  - {lo:.1f}–{hi:.1f}c: {best.ratio} (N+D={best.complexity}, {best.cents:0.3f}c)")
@@ -228,6 +244,12 @@ def main() -> None:
     )
     ap.add_argument("--delta-cents", type=float, default=5.0, help="Bin size in cents (default 5).")
     ap.add_argument("--max-per-bin", type=int, default=None, help="Limit ratios printed per bin in text mode.")
+    ap.add_argument(
+        "--optimize",
+        choices=["max", "sum"],
+        default="max",
+        help="Optimization target when choosing representative ratios for bins: 'max' => minimize max(N,D) (default), 'sum' => minimize N+D.",
+    )
     ap.add_argument("--format", choices=["text", "json", "csv"], default="text", help="Output format.")
     ap.add_argument(
         "--limit-output",
@@ -258,11 +280,12 @@ def main() -> None:
         return
 
     if args.format == "json":
-        binned = bin_items(items, args.delta_cents)
+        binned = bin_items(items, args.delta_cents, args.optimize)
         payload = {
             "primes": primes,
             "max_int": args.max_int,
             "delta_cents": args.delta_cents,
+            "optimize": args.optimize,
             "total_unique_folded": len(items),
             "bins": {label: [asdict(x) for x in bin_list] for label, bin_list in binned.items()},
         }
@@ -270,8 +293,8 @@ def main() -> None:
         return
 
     # text
-    binned = bin_items(items, args.delta_cents)
-    print(format_text(items, binned, args.max_per_bin, args.delta_cents), end="")
+    binned = bin_items(items, args.delta_cents, args.optimize)
+    print(format_text(items, binned, args.max_per_bin, args.delta_cents, args.optimize), end="")
 
 
 if __name__ == "__main__":
