@@ -129,6 +129,11 @@ G 2 e
 
 """
 
+BASSLINE_5="""
+
+
+"""
+
 MELODY_1 = """
 # melody
 C 4 e
@@ -191,6 +196,21 @@ E 4 e
 F 4 e+q*2
 """
 
+MELODY_5="""
+R e
+A 4 e
+A 4 e
+G 4 e
+A 4 e
+R e*2
+G 4 e
+E 4 e
+E 4 e
+D 4 e
+E 4 q
+G 4 q+e
+"""
+
 
 # ============================================================
 # SCHEDULE / RENDER
@@ -201,12 +221,14 @@ acc += write_notes(track1, acc, parse_lines(BASSLINE_1))
 acc += write_notes(track1, acc, parse_lines(BASSLINE_2))
 acc += write_notes(track1, acc, parse_lines(BASELINE_3))
 acc += write_notes(track1, acc, parse_lines(BASSLINE_4))
+acc += write_notes(track1, acc, parse_lines(BASSLINE_5))
 
 acc = 0.0
 acc += write_notes(track2, acc, parse_lines(MELODY_1))
 acc += write_notes(track2, acc, parse_lines(MELODY_2))
 acc += write_notes(track2, acc, parse_lines(MELODY_3))
 acc += write_notes(track2, acc, parse_lines(MELODY_4))
+acc += write_notes(track2, acc, parse_lines(MELODY_5))
 
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
