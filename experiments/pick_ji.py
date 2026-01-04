@@ -152,7 +152,7 @@ def _fmt_item_line(it: RatioItem, indent: str = "  ") -> str:
     )
 
 
-def format_text(items: List[RatioItem], binned: Dict[str, List[RatioItem]], max_per_bin: int | None) -> str:
+def format_text(items: List[RatioItem], binned: Dict[str, List[RatioItem]], max_per_bin: int | None, delta_cents: float) -> str:
     lines: List[str] = []
 
     # Small summary header
@@ -171,6 +171,33 @@ def format_text(items: List[RatioItem], binned: Dict[str, List[RatioItem]], max_
         if max_per_bin is not None and len(bin_list) > max_per_bin:
             lines.append(f"  - … ({len(bin_list) - max_per_bin} more)")
         lines.append("")
+
+    # Coverage summary across full octave (0..1200 cents)
+    num_bins = int(math.ceil(1200.0 / delta_cents))
+    # Rebuild raw bins keyed by integer index so we can detect missing bins
+    raw_bins: Dict[int, List[RatioItem]] = {}
+    for it in items:
+        k = int(math.floor(it.cents / delta_cents))
+        raw_bins.setdefault(k, []).append(it)
+
+    missing = [k for k in range(num_bins) if k not in raw_bins or len(raw_bins[k]) == 0]
+
+    lines.append("• Bin coverage summary")
+    if missing:
+        lines.append(f"  - missing bins: {len(missing)} of {num_bins} total bins ({delta_cents}c steps)")
+        for k in missing:
+            lo = k * delta_cents
+            hi = (k + 1) * delta_cents
+            lines.append(f"  - missing: {lo:.1f}–{hi:.1f}c")
+    else:
+        lines.append(f"  - all {num_bins} bins covered ({delta_cents}c steps). Lowest N+D ratio per bin:")
+        for k in range(num_bins):
+            bin_list = raw_bins[k]
+            best = sorted(bin_list, key=lambda x: (x.complexity, x.cents, x.num, x.den))[0]
+            lo = k * delta_cents
+            hi = (k + 1) * delta_cents
+            lines.append(f"  - {lo:.1f}–{hi:.1f}c: {best.ratio} (N+D={best.complexity}, {best.cents:0.3f}c)")
+    lines.append("")
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -244,7 +271,7 @@ def main() -> None:
 
     # text
     binned = bin_items(items, args.delta_cents)
-    print(format_text(items, binned, args.max_per_bin), end="")
+    print(format_text(items, binned, args.max_per_bin, args.delta_cents), end="")
 
 
 if __name__ == "__main__":
