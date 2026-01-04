@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import exp
 from typing import Callable, List, Optional, Tuple
 from src.audio.adsr_types import ADSRStage
@@ -17,7 +17,7 @@ class ExpADSR:
     release_s: float
     num_tau: float = 5.0
 
-    enter_idle_handlers: List[Callable[[],None]] = []
+    enter_idle_handlers: List[Callable[[],None]] = field(default_factory=list)
 
     stage: ADSRStage = ADSRStage.IDLE
     value: float = 0.0
@@ -68,6 +68,7 @@ class ExpADSR:
                 # ATTACK / DECAY / RELEASE are exponential segments.
                 self._exp_step()
 
+
                 # Transition when the segment duration elapses.
                 if self._i >= self._n:
                     if self.stage is ADSRStage.ATTACK:
@@ -76,7 +77,8 @@ class ExpADSR:
                         self._enter_sustain()
                     elif self.stage is ADSRStage.RELEASE:
                         self.stage = ADSRStage.IDLE  # next sample will become 0.0 (no snap here)
-
+                        for handler in self.enter_idle_handlers:
+                            handler()
             out[k] = self.value
 
         return tuple(out)
@@ -88,9 +90,7 @@ class ExpADSR:
 
     def _enter_segment(self, stage: ADSRStage, target: float, seconds: float) -> None:
         self.stage = stage
-        if stage == ADSRStage.IDLE:
-            for handler in self.enter_idle_handlers:
-                handler()
+
         self._i = 0
         self._n = self._secs_to_samples(seconds)
         self._start = self.value          # capture CURRENT value: guarantees continuity
