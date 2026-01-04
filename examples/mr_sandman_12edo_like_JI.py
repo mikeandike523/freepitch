@@ -1,11 +1,13 @@
 from dataclasses import dataclass
+
+import numpy as np
 from src.audio.mixing import mix
 from src.audio.stereo_audio import StereoAudio
 from src.audio.core import AudioBuffer
 from src.audio.exp_adsr import ExpADSR
 import math
 from src.audio.helpers.create_synth import create_synth
-from src.audio.event_scheduler import EventScheduler
+from src.audio.event_scheduler import EventScheduler, RetriggerMode
 import re
 
 SAMPLE_RATE = 48_000
@@ -79,8 +81,6 @@ class NoteName:
     def __repr__(self):
         return f"{self.text}{self.octave}"
 
-
-
 # Just the waveform part
 # ADSR is handeled automatically
 # The create_synth_with_adsr function takes care of the multiplying internally
@@ -90,7 +90,20 @@ def process_callback_track1(
     buffer = []
     for i in range(num_samples):
         t = (n + i) / sample_rate
-        value = state.volume * math.sin(state.pitch * 2 * math.pi * t)
+        # triangle wave
+        phase = (state.pitch * 2 * math.pi * t) % (2*math.pi)
+        if phase < math.pi/2:
+            value = phase / (math.pi/2)
+        elif phase < math.pi:
+            p = (phase-math.pi/2)/(math.pi/2)
+            value = 1 - p
+        elif phase < 3 * math.pi/2:
+            p = (phase-math.pi)/(math.pi/2)
+            value = -p
+        else:
+            p = (phase-3*math.pi/2)/(math.pi/2)
+            value = -1 + p
+        value *= state.volume
         buffer.append((value, value))  # stereo
     return buffer
 
@@ -105,7 +118,7 @@ def create_new_synth_track1():
 
 
 def create_new_adsr_track1():
-    return ExpADSR(SAMPLE_RATE, 0.015, 0.100, 1, 0.200, num_tau=5.0)
+    return ExpADSR(SAMPLE_RATE, 0.050, 0.050, 0.5, 0.200, num_tau=5.0)
 
 
 # Just the waveform part
@@ -150,113 +163,142 @@ def create_new_adsr_track2():
 # For now: track1 = bassline, track2 = melody
 
 track1 = EventScheduler(
-    SAMPLE_RATE, 16, create_new_synth_track1, create_new_adsr_track1, 1, 512
+    SAMPLE_RATE, 16, create_new_synth_track1, create_new_adsr_track1, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track2 = EventScheduler(
-    SAMPLE_RATE, 16, create_new_synth_track2, create_new_adsr_track2, 1, 512
+    SAMPLE_RATE, 16, create_new_synth_track2, create_new_adsr_track2, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
-bassline = [
-    ("C",3,0.25 * 6),
-    ("C",3,0.25 * 2),
-    ("F",3,0.25 * 4),
-    ("G",2,0.25 * 4),
-]
+BPM=120
+QUARTER=(60)/BPM
+EIGHTH=QUARTER/2
 
+def write_notes(track:EventScheduler, start:int, notes):
+
+    acc=start
+    for (text, octave, dur) in notes:
+        if text is None: # Rest, octave will also be None
+            acc += dur
+            continue
+        note_name = NoteName(text, octave)
+        track.add_note(
+            acc,
+            dur,
+            CustomState(
+                pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume=1
+            ),
+        )
+        acc+=dur
+    return acc-start
+
+
+bassline = [
+    ("C",3,EIGHTH * 6),
+    ("C",3,EIGHTH * 2),
+    ("F",3,EIGHTH * 4),
+    ("G",2,EIGHTH * 4),
+]
 
 bassline2 = [
-    ("C",3,0.25 * 2),
-    ("C",3,0.25 * 2),
-    ("C",3,0.25 * 2),
-    ("C",3,0.25 * 2),
-
-    ("F",3,0.25 * 2),
-    ("F",3,0.25 * 2),
-
-    ("G",2,0.25 * 2),
-    ("G",2,0.25 * 2),
+    ("C",3,EIGHTH * 2),
+    ("C",3,EIGHTH * 2),
+    ("C",3,EIGHTH * 2),
+    ("C",3,EIGHTH * 2),
+    ("F",3,EIGHTH * 2),
+    ("F",3,EIGHTH * 2),
+    ("G",2,EIGHTH * 2),
+    ("G",2,EIGHTH * 2),
 ]
 
-acc=0
-for (text, octave, dur) in bassline:
-    if text is None: # Rest, octave will also be None
-        acc += dur
-        continue
-    note_name = NoteName(text, octave)
-    track1.add_note(
-        acc,
-        dur,
-        CustomState(
-            pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume= 10**(-6/20) if octave >=3 else 10**(-0/20)
-        ),
-    )
-    acc+=dur
+baseline_pattern1 = [
+    ("C",3,EIGHTH),
+    ("G",3,EIGHTH),
+    ("E",3,EIGHTH),
+    ("G",3,EIGHTH),
+]
 
-for (text, octave, dur) in bassline2:
-    if text is None: # Rest, octave will also be None
-        acc += dur
-        continue
-    note_name = NoteName(text, octave)
-    track1.add_note(
-        acc,
-        dur,
-        CustomState(
-            pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume= 10**(-6/20) if octave >=3 else 10**(-0/20)
-        ),
-    )
-    acc+=dur
+baseline3 = []
+
+for _ in range(2):
+    baseline3.extend(baseline_pattern1)
+
+
+# These aren't right
+
+baseline3.extend([
+    ("C#",3,EIGHTH),
+    ("G",3,EIGHTH),
+    ("E",3,EIGHTH),
+    ("G",3,EIGHTH)
+])
+
+# These aren't right
+
+baseline3.extend([
+    ("B",2,EIGHTH),
+    ("E",3,EIGHTH),
+    ("E",2,EIGHTH),
+    ("B",2,EIGHTH)
+])
 
 melody = [
-    ("C", 4, 0.25),
-    ("E", 4, 0.25),
-    ("G", 4, 0.25),
-    ("B", 4, 0.25),
-    ("A", 4, 0.25),
-    ("G", 4, 0.25),
-    ("E", 4, 0.25),
-    ("C", 4, 0.25),
-    ("D", 4, 0.25),   
-    ("F", 4, 0.25),
-    ("A", 4, 0.25),
-    ("C", 5, 0.25),
-    ("B", 4, 0.25*4),
+    ("C", 4, EIGHTH),
+    ("E", 4, EIGHTH),
+    ("G", 4, EIGHTH),
+    ("B", 4, EIGHTH),
+    ("A", 4, EIGHTH),
+    ("G", 4, EIGHTH),
+    ("E", 4, EIGHTH),
+    ("C", 4, EIGHTH),
+    ("D", 4, EIGHTH),   
+    ("F", 4, EIGHTH),
+    ("A", 4, EIGHTH),
+    ("C", 5, EIGHTH),
+    ("B", 4, EIGHTH*4),
 ]
 
+melody2 = [
+    ("C", 4, EIGHTH),
+    ("E", 4, EIGHTH),
+    ("G", 4, EIGHTH),
+    ("B", 4, EIGHTH),
+    ("A", 4, EIGHTH),
+    ("G", 4, EIGHTH),
+    ("E", 4, EIGHTH),
+    ("C", 4, EIGHTH),
+    ("D", 4, EIGHTH),   
+    ("F", 4, EIGHTH),
+    ("A", 4, EIGHTH),
+    ("C", 5, EIGHTH),
+    ("B", 4, EIGHTH*2),
+    ("A", 4, EIGHTH),
+    ("B", 4, EIGHTH),
+]
+
+melody3=[
+    ("B", 4, QUARTER),
+    ("A", 4, QUARTER*3),
+    ("B",4, EIGHTH),
+    ("B",4, EIGHTH),
+    ("A",4, EIGHTH),
+    ("B",4, EIGHTH + EIGHTH*4) # See how addition indicates a tie
+]
 
 acc=0
-for (text, octave, dur) in melody:
-    if text is None: # Rest, octave will also be None
-        acc += dur
-        continue
-    note_name = NoteName(text, octave)
-    track2.add_note(
-        acc,
-        dur,
-        CustomState(
-            pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume=1
-        ),
-    )
-    acc+=dur
+acc+=write_notes(track1, acc, bassline)
+acc+=write_notes(track1, acc, bassline2)
+acc+=write_notes(track1, acc, baseline3)
 
-for (text, octave, dur) in melody:
-    if text is None: # Rest, octave will also be None
-        acc += dur
-        continue
-    note_name = NoteName(text, octave)
-    track2.add_note(
-        acc,
-        dur,
-        CustomState(
-            pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume=1
-        ),
-    )
-    acc+=dur
+acc=0
+acc+=write_notes(track2, acc, melody)
+acc+= write_notes(track2, acc, melody2)
+acc+=write_notes(track2, acc, melody3)
 
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
 
-frames = mix(((10**(-3/20), frames1), (10**(-45/20), frames2)))
+frames = mix(((10**(-3/20), frames1), (10**(-30/20), frames2)))
 
-se = StereoAudio(tuple(frames), SAMPLE_RATE)
+se = StereoAudio(frames, SAMPLE_RATE)
 se.play(blocking=True)
