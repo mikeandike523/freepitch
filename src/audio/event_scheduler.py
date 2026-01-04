@@ -390,26 +390,3 @@ to throw error if not true.
 
             num_processed_blocks += 1
             yield from block_frames
-
-
-
-
-
-        # Step 2. 
-        # Ensure well-formed data
-        # Make sure there are no straggling active voices by the time the last (simplified) event is processed
-
-        # Step 3. 
-
-        # Compute duration, given the amplitude that is considered silence, and worst-case the max_tail in seconds
-        # Note: for adsr-controlled, if we detect a state where all voices are idle after the last note_off, then we can just end the render there
-        # (This often occurs, since ADSR has an idle condition, and we used "register_enter_idle_handler" on the ADSR to automatically shut off the voice)
-
-        # Step 4.
-
-        # Return data about duration, and a generator, so we can lazy evaluate for progress bars / progress messages
-
-
-        # Sample generation:
-        # Can do this in a separate function or a closure in this function
-        # It progressively generates samples, looking for new events in the upcoming bin, which it can identify by tracking "exhausted" bins
