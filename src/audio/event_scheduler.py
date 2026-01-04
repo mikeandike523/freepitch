@@ -5,7 +5,7 @@ from enum import Enum, auto
 import math
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar
 from src.audio.adsr_types import ADSR, ADSRStage
-from src.audio.core import CallbackSynth
+from src.audio.core import CallbackSynth, AudioBuffer
 
 @dataclass(slots=True)
 class Voice:
@@ -14,7 +14,7 @@ class Voice:
     _adsr: Optional[ADSR] = None
     _last_note_on_sample_index=0 # No need for Optional type, even though its more correct
     _last_note_off_sample_index=0 # No need for Optional type, even though its more correct
-
+    _current_note_id: Optional[int]=None
 
     def __init__(
         self,
@@ -30,12 +30,13 @@ class Voice:
 
         self._adsr.register_enter_idle_handler(make_self_not_running)
 
-    def note_on(self, data, global_sample_index:Optional[int]=None):
+    def note_on(self, note_id, data, global_sample_index:Optional[int]=None):
         if self._adsr:
             self._adsr.reset()
             self._adsr.note_on()
         self._synth.set_state(data)
         self._synth.reset()
+        self._current_note_id = note_id
         
         self._running = True
 
@@ -60,6 +61,9 @@ class Voice:
     
     def is_running(self) -> bool:
         return self._running
+    
+    def get_current_note_id(self) -> Optional[int]:
+        return self._current_note_id
     
     def get_last_note_on_sample_index(self) -> int:
         return self._last_note_on_sample_index
@@ -205,6 +209,7 @@ class EventScheduler:
     _sample_rate: int
     _max_voices: int
     _tick_size: int
+    _buffer_size: int
 
     voices: Tuple[Voice, ...]
 
@@ -217,12 +222,23 @@ class EventScheduler:
             create_new_synth: Callable[[], CallbackSynth],
             create_new_adsr: Optional[Callable[[],ADSR]]=None,
             tick_size: Optional[int]=4, # Default to a small value > 1 to avoid floating point issues
-
+            buffer_size: Optional[int]=512
     ):
+        if buffer_size % tick_size != 0:
+            raise ValueError(
+"""
+We enforce condition that buffer_size must be a multiple of tick_size.
+It may not be mathematically necessary, but it is recommended enough
+to throw error if not true.
+"""
+
+            )
+        
         self._create_new_synth = create_new_synth
         self._create_new_adsr = lambda: None if create_new_adsr is None else create_new_adsr
         self._sample_rate = sample_rate
         self._max_voices = max_voices
+        self._buffer_size = buffer_size
         self._tick_size = tick_size
         self._is_using_adsr = create_new_adsr is not None
 
@@ -243,9 +259,9 @@ class EventScheduler:
     def add_event[D](self, time: float, kind: EventKind, data: D):
         quantized_sample_index = None
         if kind == EventKind.NOTE_ON:
-            quantized_sample_index = math.floor(time*self._sample_rate*self._tick_size) / self._tick_size
+            quantized_sample_index = math.floor(time*self._sample_rate/self._tick_size) * self._tick_size
         else:
-            quantized_sample_index = math.ceil(time*self._sample_rate*self._tick_size) / self._tick_size
+            quantized_sample_index = math.ceil(time*self._sample_rate/self._tick_size) * self._tick_size
         self.event_bins[quantized_sample_index].add_event(Event(
             kind=kind,
             data=data
@@ -263,7 +279,11 @@ class EventScheduler:
     def _get_free_voices(self):
         return tuple(filter(lambda x: x.is_running(), self.voices))
     
-    def _get_or_steal_voice(self):
+    def _get_or_steal_voice(self, note_id: Optional[int]=None) -> Voice:
+        # Detect retrigger
+        rt_voices = tuple(filter(lambda voice: voice.is_running() and voice.get_current_note_id() == note_id, self.voices))
+        if rt_voices:
+            return rt_voices[0]
         free_voices = self._get_free_voices()
         if free_voices:
             return free_voices[0]
@@ -285,14 +305,52 @@ class EventScheduler:
     # In the future, will want to write algorithms
     # to mark regions of silence and skip
     def render(self,
-               silence_amplitude=10 ** (-60 / 20),
-               max_tail_seconds=2):
+               silence_amplitude=10 ** (-60 / 20)):
         
         # Step 1. Perform disambiguation rules
 
-        simplified_event_bins = {
+        remaining_bins = {
             i: b.get_simplified() for (i, b) in self.event_bins.items()
         }
+
+        # Sort by key, ascending
+
+        remaining_bins: Dict[int, EventBin] = dict(sorted(remaining_bins.items(), key=lambda item: item[0]))
+
+        block_frames = None
+
+        num_processed_blocks = 0
+        
+        while block_frames is None or any(
+            math.abs(l) > silence_amplitude or math.abs(r) > silence_amplitude
+            for l, r in block_frames
+        ) or any(voice.is_running() for voice in self.voices) or remaining_bins:
+            print(f"Processing block {num_processed_blocks}...")
+            cursor = num_processed_blocks * self._tick_size
+            block_event_bins = []
+            while True:
+                if remaining_bins:
+                    next_bin_index, next_bin = next(remaining_bins.items())
+                    if next_bin_index < cursor + self._buffer_size:
+                        block_event_bins.append((next_bin_index, next_bin))
+                        del remaining_bins[next_bin_index]
+                    else:
+                        break
+                else:
+                    break
+            block_buffers = [
+
+            ]
+            for bin_index, event_bin in block_event_bins:
+                # sample index, even bin
+                offset_in_block = bin_index - cursor
+                for note_id, events_for_note_id in event_bin.events.items():
+                    for event in events_for_note_id:
+                        ...
+
+            
+
+
 
         # Step 2. 
         # Ensure well-formed data
