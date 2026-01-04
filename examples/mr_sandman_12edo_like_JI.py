@@ -495,5 +495,11 @@ frames2 = track2.render_collect()
 
 frames = mix(((10**(-3/20), frames1), (10**(-30/20), frames2)))
 
+
+print("Playing...")
 se = StereoAudio(frames, SAMPLE_RATE)
 se.play(blocking=True)
+se.export(
+    "output_files/mr_sandman_ji.wav", 24
+)
+
