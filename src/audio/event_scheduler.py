@@ -30,11 +30,16 @@ class Voice:
             self._adsr.register_enter_idle_handler(make_self_not_running)
 
     def note_on(self, note_id, data, global_sample_index: Optional[int] = None):
-        if self._adsr:
-            self._adsr.reset()
-            self._adsr.note_on()
         self._synth.set_state(data)
-        self._synth.reset()
+        if self._adsr:
+            if self._adsr.get_stage() == ADSRStage.IDLE:
+                self._adsr.reset()
+                self._adsr.note_on()
+                self._synth.reset()
+            else:
+                self._adsr.note_on()
+        else:
+            self._synth.reset()
         self._current_note_id = note_id
 
         self._running = True
