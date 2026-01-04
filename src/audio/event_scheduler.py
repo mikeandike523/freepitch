@@ -29,12 +29,24 @@ class Voice:
         if self._adsr:
             self._adsr.register_enter_idle_handler(make_self_not_running)
 
-    def note_on(self, note_id, data, global_sample_index: Optional[int] = None):
+    def note_on(
+        self,
+        note_id,
+        data,
+        global_sample_index: Optional[int] = None,
+        *,
+        reset_adsr: bool = True,
+        reset_synth: bool = True,
+        trigger_adsr: bool = True,
+    ):
         if self._adsr:
-            self._adsr.reset()
-            self._adsr.note_on()
+            if reset_adsr:
+                self._adsr.reset()
+            if trigger_adsr:
+                self._adsr.note_on()
         self._synth.set_state(data)
-        self._synth.reset()
+        if reset_synth:
+            self._synth.reset()
         self._current_note_id = note_id
 
         self._running = True
@@ -79,6 +91,12 @@ class Voice:
 class EventKind(Enum):
     NOTE_ON = auto()
     NOTE_OFF = auto()
+
+
+class RetriggerMode(Enum):
+    ALLOW_TAILS = auto()
+    CUT_TAILS = auto()
+    ATTACK_FROM_CURRENT_LEVEL = auto()
 
 
 D = TypeVar("D")
@@ -161,6 +179,12 @@ class EventScheduler:
             So a steal will occur only to note_on when all voices are active
             It will simply steal the oldest note on
 
+    Retrigger handling is configurable via retrigger_mode:
+        ALLOW_TAILS: do not special-case; allow overlapping voices
+        CUT_TAILS: reuse the running voice for the same note id
+        ATTACK_FROM_CURRENT_LEVEL: if ADSR is enabled, restart attack from
+            the current envelope level without resetting synth state
+
 
     Event simultaneity:
 
@@ -215,6 +239,7 @@ class EventScheduler:
     _max_voices: int
     _tick_size: int
     _buffer_size: int
+    _retrigger_mode: RetriggerMode
 
     voices: Tuple[Voice, ...]
 
@@ -232,6 +257,7 @@ class EventScheduler:
             int
         ] = 4,  # Default to a small value > 1 to avoid floating point issues
         buffer_size: Optional[int] = 512,
+        retrigger_mode: RetriggerMode = RetriggerMode.ALLOW_TAILS,
     ):
         if buffer_size % tick_size != 0:
             raise ValueError(
@@ -251,6 +277,7 @@ to throw error if not true.
         self._buffer_size = buffer_size
         self._tick_size = tick_size
         self._is_using_adsr = create_new_adsr is not None
+        self._retrigger_mode = retrigger_mode
 
         self.voices = tuple(
             Voice(
@@ -286,6 +313,16 @@ to throw error if not true.
 
     def _get_free_voices(self):
         return tuple(filter(lambda x: not x.is_running(), self.voices))
+
+    def _get_retrigger_voice(self, note_id: Optional[int]) -> Optional[Voice]:
+        return next(
+            (
+                voice
+                for voice in self.voices
+                if voice.is_running() and voice.get_current_note_id() == note_id
+            ),
+            None,
+        )
 
     def _get_or_steal_voice(self) -> Voice:
         free_voices = self._get_free_voices()
@@ -399,10 +436,28 @@ to throw error if not true.
                 for note_id, events_for_note_id in event_bin.events.items():
                     for event in events_for_note_id:
                         if event.kind == EventKind.NOTE_ON:
-                            voice = self._get_or_steal_voice()
-                            voice.note_on(
-                                note_id, event.data, global_sample_index=bin_index
-                            )
+                            retrigger_voice = None
+                            if self._retrigger_mode is not RetriggerMode.ALLOW_TAILS:
+                                retrigger_voice = self._get_retrigger_voice(note_id)
+                            if (
+                                retrigger_voice
+                                and self._retrigger_mode
+                                is RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+                                and self._is_using_adsr
+                            ):
+                                retrigger_voice.note_on(
+                                    note_id,
+                                    event.data,
+                                    global_sample_index=bin_index,
+                                    reset_adsr=False,
+                                    reset_synth=False,
+                                    trigger_adsr=True,
+                                )
+                            else:
+                                voice = retrigger_voice or self._get_or_steal_voice()
+                                voice.note_on(
+                                    note_id, event.data, global_sample_index=bin_index
+                                )
                         elif event.kind == EventKind.NOTE_OFF:
                             target_voice = next(
                                 (
