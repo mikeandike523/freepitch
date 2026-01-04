@@ -14,27 +14,22 @@ REFERENCE_A_FREQ = 440
 # The -1 makes it go to the octave below
 REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** (3 / 12 - 1)
 
-# GPT helped me choose some decent starting values
-LIMIT_5_JI_12 = [
-    1/1,    # C
-    16/15,  # C#
-    9/8,    # D
-    6/5,    # D#
-    5/4,    # E
-    4/3,    # F
-    45/32,  # F# (alt: 64/45)
-    3/2,    # G
-    8/5,    # G#
-    5/3,    # A
-    9/5,    # A#
-    15/8,   # B
+
+# ./
+SCALE = [
+1/1,
+10/9,
+9/8,
+5/4,
+4/3,
+25/18,
+36/25,
+3/2,
+5/3,
+16/9,
+9/5,
+48/25
 ]
-
-EDO_12 = []
-
-for n in range(12):
-    ratio = 2 ** (n / 12)
-    EDO_12.append(ratio)
 
 @dataclass(slots=False)
 class CustomState:
@@ -81,48 +76,19 @@ track1 = EventScheduler(
 
 # Compose the song here
 
-melody = [
-
-    # C E G E C
-
-    0, 4, 7, 4, 0,
-
-]
-
 # Compare JI to 12-tone
-for i,note_index in enumerate(melody):
+for i in range(len(SCALE)):
     track1.add_note(
         0+i * 0.5,
         0.5,
         CustomState(
-            pitch=REFERENCE_C_FREQ * LIMIT_5_JI_12[note_index],
+            pitch=REFERENCE_C_FREQ * SCALE[i],
             volume=0.3,
-            note_id=note_index
+            note_id=i
         )
     )
 
-for i, note_index in enumerate(melody):
-    track1.add_note(
-        3 + i * 0.5,
-        0.5,
-        CustomState(
-            pitch=REFERENCE_C_FREQ * EDO_12[note_index],
-            volume=0.3,
-            note_id=note_index
-        )
-    )
-
-
-render_gen = track1.render()
-
-frames = []
-
-while True:
-    try:
-        block = next(render_gen)
-        frames.extend(block)
-    except StopIteration:
-        break
+frames = track1.render_collect()
 
 se = StereoAudio(tuple(frames), SAMPLE_RATE)
 se.play(blocking=True)

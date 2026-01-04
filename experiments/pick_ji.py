@@ -113,6 +113,51 @@ def compute_item(fr_folded: Fraction) -> RatioItem:
     )
 
 
+def cents_distance(a: float, b: float) -> float:
+    """Circular distance in cents on the octave [0,1200)."""
+    d = abs(a - b)
+    if d > 600.0:
+        d = 1200.0 - d
+    return d
+
+
+def find_closest_per_edo(items: List[RatioItem], edo: int, per_step: int = 1, tolerance: float | None = None, optimize: str = "max") -> Dict[int, List[Tuple[RatioItem, float]]]:
+    """For each EDO step, find the closest `per_step` RatioItem(s).
+
+    Returns a dict mapping step index -> list of tuples (RatioItem, distance_cents).
+    """
+    if edo < 1:
+        raise ValueError("edo must be >= 1")
+
+    # Choose tie-breaker key consistent with binning optimize behavior
+    if optimize == "sum":
+        tie_key = lambda x: (x.complexity, x.cents, x.num, x.den)
+    else:
+        tie_key = lambda x: (max(x.num, x.den), x.complexity, x.cents, x.num, x.den)
+
+    # Pre-sort items by the tie-breaker so stable tie resolution can be applied
+    items_sorted_for_ties = sorted(items, key=tie_key)
+
+    results: Dict[int, List[Tuple[RatioItem, float]]] = {}
+    step_size = 1200.0 / edo
+    for s in range(edo):
+        target = s * step_size
+
+        # compute distances
+        scored = []
+        for it in items_sorted_for_ties:
+            dist = cents_distance(it.cents, target)
+            if tolerance is None or dist <= tolerance:
+                scored.append((dist, it))
+
+        # pick best per_step by distance then tie_key
+        scored.sort(key=lambda x: (x[0],) + tie_key(x[1]))
+        chosen: List[Tuple[RatioItem, float]] = [(it, d) for (d, it) in scored[:per_step]]
+        results[s] = chosen
+
+    return results
+
+
 def generate_folded_unique_ratios(primes: List[int], max_int: int) -> List[Fraction]:
     """Generate all unique ratios, octave-folded into [1,2) and deduped after folding."""
     smooth = gen_smooth_numbers(primes, max_int)
@@ -244,6 +289,9 @@ def main() -> None:
     )
     ap.add_argument("--delta-cents", type=float, default=5.0, help="Bin size in cents (default 5).")
     ap.add_argument("--max-per-bin", type=int, default=None, help="Limit ratios printed per bin in text mode.")
+    ap.add_argument("--edo", type=int, default=None, help="If set, find closest JI ratios to each EDO step (e.g. 12 for 12-edo).")
+    ap.add_argument("--per-step", type=int, default=1, help="How many closest ratios to show per EDO step (default 1).")
+    ap.add_argument("--tolerance-cents", type=float, default=None, help="Optional maximum distance in cents to accept a match for EDO mode.")
     ap.add_argument(
         "--optimize",
         choices=["max", "sum"],
@@ -257,6 +305,11 @@ def main() -> None:
         default=None,
         help="Limit total printed items (after global cents sort, before binning).",
     )
+    ap.add_argument(
+        "--ratios-only",
+        action="store_true",
+        help="Only print one ratio per line (newline-delimited). Error if not all bins covered.",
+    )
 
     args = ap.parse_args()
 
@@ -265,6 +318,8 @@ def main() -> None:
         raise SystemExit("--max-int must be >= 1")
     if args.delta_cents <= 0:
         raise SystemExit("--delta-cents must be > 0")
+    if args.edo is not None and args.edo < 1:
+        raise SystemExit("--edo must be >= 1 if specified")
 
     folded = generate_folded_unique_ratios(primes, args.max_int)
     items = [compute_item(fr) for fr in folded]
@@ -275,8 +330,105 @@ def main() -> None:
     if args.limit_output is not None:
         items = items[: args.limit_output]
 
+    # If user requested EDO-centred matching, handle that mode and exit
+    if args.edo is not None:
+        edo_results = find_closest_per_edo(items, args.edo, per_step=args.per_step, tolerance=args.tolerance_cents, optimize=args.optimize)
+
+        # CSV mode: emit one line per match: step, target_cents, ratio, cents, distance, complexity
+        if args.format == "csv":
+            header = ["step", "target_cents", "ratio", "num", "den", "cents", "distance_cents", "complexity"]
+            out = [",".join(header)]
+            step_size = 1200.0 / args.edo
+            for s in range(args.edo):
+                target = s * step_size
+                matches = edo_results.get(s, [])
+                if not matches:
+                    out.append(f"{s},{target:.6f},,, , , ,")
+                    continue
+                for (it, dist) in matches:
+                    out.append(",".join([
+                        str(s),
+                        f"{target:.6f}",
+                        it.ratio,
+                        str(it.num),
+                        str(it.den),
+                        f"{it.cents:.6f}",
+                        f"{dist:.6f}",
+                        str(it.complexity),
+                    ]))
+            print("\n".join(out))
+            return
+
+        # JSON: serialize per-step matches
+        if args.format == "json":
+            step_size = 1200.0 / args.edo
+            payload = {
+                "primes": primes,
+                "max_int": args.max_int,
+                "edo": args.edo,
+                "per_step": args.per_step,
+                "tolerance_cents": args.tolerance_cents,
+                "optimize": args.optimize,
+                "total_unique_folded": len(items),
+                "steps": {},
+            }
+            for s in range(args.edo):
+                target = s * step_size
+                matches = edo_results.get(s, [])
+                payload["steps"][str(s)] = {
+                    "target_cents": target,
+                    "matches": [
+                        {**asdict(it), "distance_cents": d} for (it, d) in matches
+                    ],
+                }
+            print(json.dumps(payload, indent=2))
+            return
+
+        # Text mode: pretty print per-step results
+        step_size = 1200.0 / args.edo
+        lines: List[str] = []
+        lines.append(f"EDO: {args.edo} (step = {step_size:.6f} cents), primes={primes}, max_int={args.max_int}")
+        for s in range(args.edo):
+            target = s * step_size
+            matches = edo_results.get(s, [])
+            if not matches:
+                lines.append(f"- Step {s}: target={target:.3f}c -> (no match within tolerance)")
+                continue
+            for i, (it, dist) in enumerate(matches):
+                prefix = f"- Step {s}" if i == 0 else "  "
+                lines.append(f"{prefix}: target={target:.3f}c -> {it.ratio} {it.cents:0.3f}c (Δ={dist:0.3f}c, N+D={it.complexity})")
+        print("\n".join(lines))
+        return
+
     if args.format == "csv":
         print(format_csv(items), end="")
+        return
+
+    # ratios-only: print one representative ratio per bin (newline-delimited), require full coverage
+    if args.ratios_only:
+        if args.delta_cents <= 0:
+            raise SystemExit("--delta-cents must be > 0")
+        num_bins = int(math.ceil(1200.0 / args.delta_cents))
+        raw_bins: Dict[int, List[RatioItem]] = {}
+        for it in items:
+            k = int(math.floor(it.cents / args.delta_cents))
+            raw_bins.setdefault(k, []).append(it)
+
+        missing = [k for k in range(num_bins) if k not in raw_bins or len(raw_bins[k]) == 0]
+        if missing:
+            raise SystemExit(f"--ratios-only requires full coverage: {len(missing)} missing bins of {num_bins}")
+
+        # choose one representative per bin according to optimization target
+        if args.optimize == "sum":
+            keyfn = lambda x: (x.complexity, x.cents, x.num, x.den)
+        else:
+            keyfn = lambda x: (max(x.num, x.den), x.complexity, x.cents, x.num, x.den)
+
+        reps: List[RatioItem] = [sorted(raw_bins[k], key=keyfn)[0] for k in range(num_bins)]
+
+        # Print representatives in ascending cents order (bin order)
+        for it in reps:
+            print(it.ratio)
         return
 
     if args.format == "json":
