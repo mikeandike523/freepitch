@@ -326,6 +326,17 @@ to throw error if not true.
             )
             return voices_sorted[0]
 
+    def render_collect(self, silence_amplitude=10 ** (-60 / 20)):
+        gen = self.render(silence_amplitude)
+        frames = []
+        while True:
+            try:
+                block = next(gen)
+                frames.extend(block)
+            except StopIteration:
+                break
+        return tuple(frames)
+
     # Naive approach
     # go tick by tick
     # In the future, will want to write algorithms
