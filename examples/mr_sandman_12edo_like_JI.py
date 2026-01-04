@@ -390,7 +390,24 @@ E 3 e
 """
 
 BASSLINE_4="""
+D 3 e
+F 3 e
+A 3 e
+F 3 e
 
+D 3 e
+F 3 e
+A 3 e
+F 3 e
+
+G 2 e
+B 2 e
+D 3 e
+F 3 e
+A 3 e
+F 3 e
+D 3 e
+G 2 e
 
 """
 
