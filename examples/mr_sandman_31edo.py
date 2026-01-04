@@ -131,7 +131,7 @@ def create_new_synth_track1():
 
 
 def create_new_adsr_track1():
-    return ExpADSR(SAMPLE_RATE, 0.015, 0.100, 0.1, 0.200, num_tau=5.0)
+    return ExpADSR(SAMPLE_RATE, 0.015, 0.100, 1, 0.200, num_tau=5.0)
 
 
 # Just the waveform part
@@ -164,7 +164,7 @@ def create_new_synth_track2():
 
 
 def create_new_adsr_track2():
-    return ExpADSR(SAMPLE_RATE, 0.015, 0.100, 0.1, 0.200, num_tau=5.0)
+    return ExpADSR(SAMPLE_RATE, 0.015, 0.100, 1, 0.200, num_tau=5.0)
 
 
 # Tracks have polyphony
@@ -182,6 +182,35 @@ track1 = EventScheduler(
 track2 = EventScheduler(
     SAMPLE_RATE, 16, create_new_synth_track2, create_new_adsr_track2, 1, 512
 )
+
+bassline = [
+    ("C",3,0.25 * 6),
+    ("C",3,0.25 * 2),
+    ("F",3,0.25 * 4),
+    ("G",2,0.25 * 4),
+]
+
+acc=0
+for (text, octave, dur) in bassline:
+    if text is None: # Rest, octave will also be None
+        acc += dur
+        continue
+    note_name = EDO31NoteName(text, octave)
+    track1.add_note(
+        acc,
+        dur,
+        CustomState(
+            pitch=note_name.get_pitch(), note_id=note_name.get_note_id(), volume=0.75
+        ),
+    )
+    track1.add_note(
+        acc,
+        dur,
+        CustomState(
+            pitch=note_name.get_pitch()*2, note_id=note_name.get_note_id(), volume=0.25
+        ),
+    )
+    acc+=dur
 
 melody = [
     ("C", 4, 0.25),
@@ -202,8 +231,11 @@ melody = [
 
 acc=0
 for (text, octave, dur) in melody:
+    if text is None: # Rest, octave will also be None
+        acc += dur
+        continue
     note_name = EDO31NoteName(text, octave)
-    track1.add_note(
+    track2.add_note(
         acc,
         dur,
         CustomState(
@@ -215,8 +247,7 @@ for (text, octave, dur) in melody:
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
 
+frames = mix(((10**(-1.5/20), frames1), (10**(-36/20), frames2)))
 
-frames = mix(((0.5, frames1), (0.5, frames2)))
-
-se = StereoAudio(tuple(frames1), SAMPLE_RATE)
+se = StereoAudio(tuple(frames), SAMPLE_RATE)
 se.play(blocking=True)
