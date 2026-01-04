@@ -274,7 +274,9 @@ to throw error if not true.
             )
         self.event_bins[quantized_sample_index].add_event(Event(kind=kind, data=data))
 
-    # Some convenience helpers
+    def add_note[D](self, time: float, duration: float, data: D):
+        self.add_event(time, EventKind.NOTE_ON, data)
+        self.add_event(time + duration, EventKind.NOTE_OFF, data)
 
     def _get_running_voice_count(self):
         return len(tuple(True for v in self.voices if v.is_running()))
