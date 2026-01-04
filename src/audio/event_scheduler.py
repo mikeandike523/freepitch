@@ -28,7 +28,8 @@ class Voice:
         def make_self_not_running():
             self._running=False
 
-        self._adsr.register_enter_idle_handler(make_self_not_running)
+        if self._adsr:
+            self._adsr.register_enter_idle_handler(make_self_not_running)
 
     def note_on(self, note_id, data, global_sample_index:Optional[int]=None):
         if self._adsr:
@@ -46,6 +47,8 @@ class Voice:
     def note_off(self, global_sample_index:Optional[int]=None):
         if self._adsr:
             self._adsr.note_off()
+        else:
+            self._running = False
         if global_sample_index is not None:
             self._last_note_off_sample_index=global_sample_index
 
@@ -88,6 +91,10 @@ class Event[D]:
     kind: EventKind
     data: D
 
+    @property
+    def note_id(self) -> int:
+        return self.data.note_id
+
 
 
 @dataclass(slots=True)
@@ -120,8 +127,8 @@ class EventBin:
         # This is up to library user to uphold
         
         for note_id, events_for_note_id in self.events.items():
-            offs_for_note_id = tuple(filter(events_for_note_id, lambda evt: evt.kind == EventKind.NOTE_OFF))
-            ons_for_note_id = tuple(filter(events_for_note_id, lambda evt: evt.kind == EventKind.NOTE_ON))
+            offs_for_note_id = tuple(filter(lambda evt: evt.kind == EventKind.NOTE_OFF, events_for_note_id))
+            ons_for_note_id = tuple(filter(lambda evt: evt.kind == EventKind.NOTE_ON, events_for_note_id))
             if offs_for_note_id:
                 simple_events[note_id].append(copy.deepcopy(offs_for_note_id[0])) # Once again, assume that an ID uniquely corresponds to unique data
             if ons_for_note_id:
@@ -235,7 +242,7 @@ to throw error if not true.
             )
         
         self._create_new_synth = create_new_synth
-        self._create_new_adsr = lambda: None if create_new_adsr is None else create_new_adsr
+        self._create_new_adsr = lambda: None if create_new_adsr is None else create_new_adsr()
         self._sample_rate = sample_rate
         self._max_voices = max_voices
         self._buffer_size = buffer_size
@@ -245,7 +252,6 @@ to throw error if not true.
         self.voices = tuple(
 
             Voice(
-                sample_rate=sample_rate,
                 synth=self._create_new_synth(),
                 adsr=self._create_new_adsr() # Will evaluate to None if no create_new_adsr function was provided in constructor
             )
@@ -277,7 +283,7 @@ to throw error if not true.
         return self._max_voices - self._get_running_voice_count()
     
     def _get_free_voices(self):
-        return tuple(filter(lambda x: x.is_running(), self.voices))
+        return tuple(filter(lambda x: not x.is_running(), self.voices))
     
     def _get_or_steal_voice(self, note_id: Optional[int]=None) -> Voice:
         # Detect retrigger
@@ -292,7 +298,7 @@ to throw error if not true.
             voices_sorted = sorted(self.voices, key=lambda voice: voice.get_last_note_on_sample_index())
             return voices_sorted[0]
         else:
-            release_voices: Tuple[Voice, ...] = tuple(filter(self.voices, lambda voice: voice.get_adsr_stage()==ADSRStage.RELEASE))
+            release_voices: Tuple[Voice, ...] = tuple(filter(lambda voice: voice.get_adsr_stage()==ADSRStage.RELEASE, self.voices))
             if release_voices:
                 release_voices_sorted = sorted(release_voices, key=lambda voice: voice.get_last_note_off_sample_index())
                 return release_voices_sorted[0]
@@ -322,15 +328,15 @@ to throw error if not true.
         num_processed_blocks = 0
         
         while block_frames is None or any(
-            math.abs(l) > silence_amplitude or math.abs(r) > silence_amplitude
+            abs(l) > silence_amplitude or abs(r) > silence_amplitude
             for l, r in block_frames
         ) or any(voice.is_running() for voice in self.voices) or remaining_bins:
             print(f"Processing block {num_processed_blocks}...")
-            cursor = num_processed_blocks * self._tick_size
+            cursor = num_processed_blocks * self._buffer_size
             block_event_bins = []
             while True:
                 if remaining_bins:
-                    next_bin_index, next_bin = next(remaining_bins.items())
+                    next_bin_index, next_bin = next(iter(remaining_bins.items()))
                     if next_bin_index < cursor + self._buffer_size:
                         block_event_bins.append((next_bin_index, next_bin))
                         del remaining_bins[next_bin_index]
@@ -338,17 +344,54 @@ to throw error if not true.
                         break
                 else:
                     break
-            block_buffers = [
+            block_frames = []
+            segment_start = 0
 
-            ]
+            def render_segment(num_samples: int) -> List[Tuple[float, float]]:
+                if num_samples <= 0:
+                    return []
+                mix_left = [0.0] * num_samples
+                mix_right = [0.0] * num_samples
+                for voice in self.voices:
+                    if not voice.is_running():
+                        continue
+                    voice_frames = voice.process(num_samples)
+                    for i, (l, r) in enumerate(voice_frames):
+                        mix_left[i] += l
+                        mix_right[i] += r
+                return list(zip(mix_left, mix_right))
+
             for bin_index, event_bin in block_event_bins:
                 # sample index, even bin
                 offset_in_block = bin_index - cursor
+                segment_length = offset_in_block - segment_start
+                if segment_length > 0:
+                    block_frames.extend(render_segment(segment_length))
+                    segment_start = offset_in_block
                 for note_id, events_for_note_id in event_bin.events.items():
                     for event in events_for_note_id:
-                        ...
+                        if event.kind == EventKind.NOTE_ON:
+                            voice = self._get_or_steal_voice(note_id)
+                            voice.note_on(note_id, event.data, global_sample_index=bin_index)
+                        elif event.kind == EventKind.NOTE_OFF:
+                            target_voice = next(
+                                (
+                                    voice for voice in self.voices
+                                    if voice.is_running() and voice.get_current_note_id() == note_id
+                                ),
+                                None,
+                            )
+                            if target_voice is not None:
+                                target_voice.note_off(global_sample_index=bin_index)
 
-            
+            remaining_samples = self._buffer_size - segment_start
+            if remaining_samples > 0:
+                block_frames.extend(render_segment(remaining_samples))
+
+            num_processed_blocks += 1
+            yield from block_frames
+
+
 
 
 
