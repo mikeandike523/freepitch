@@ -15,20 +15,20 @@ REFERENCE_A_FREQ = 440
 REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** (3 / 12 - 1)
 
 
-# ./
+#  ./__inenv python experiments/pick_ji.py --primes=2,3,5 --max-int=64 --edo=12 --per-step=1 --format ratios
 SCALE = [
 1/1,
-10/9,
+16/15,
 9/8,
+32/27,
 5/4,
 4/3,
-25/18,
-36/25,
+45/32,
 3/2,
-5/3,
+8/5,
+27/16,
 16/9,
-9/5,
-48/25
+15/8,
 ]
 
 @dataclass(slots=False)
@@ -77,9 +77,11 @@ track1 = EventScheduler(
 # Compose the song here
 
 # Compare JI to 12-tone
+
+acc = 0
 for i in range(len(SCALE)):
     track1.add_note(
-        0+i * 0.5,
+        acc,
         0.5,
         CustomState(
             pitch=REFERENCE_C_FREQ * SCALE[i],
@@ -87,6 +89,9 @@ for i in range(len(SCALE)):
             note_id=i
         )
     )
+    acc+=0.5
+
+
 
 frames = track1.render_collect()
 

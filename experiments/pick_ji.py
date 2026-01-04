@@ -298,7 +298,7 @@ def main() -> None:
         default="max",
         help="Optimization target when choosing representative ratios for bins: 'max' => minimize max(N,D) (default), 'sum' => minimize N+D.",
     )
-    ap.add_argument("--format", choices=["text", "json", "csv"], default="text", help="Output format.")
+    ap.add_argument("--format", choices=["text", "json", "csv", "ratios"], default="text", help="Output format. 'ratios' prints only the ratio column, no header or prose.")
     ap.add_argument(
         "--limit-output",
         type=int,
@@ -359,6 +359,17 @@ def main() -> None:
             print("\n".join(out))
             return
 
+        # Ratios-only mode: print only the ratio column, one per line, no header
+        if args.format == "ratios":
+            step_size = 1200.0 / args.edo
+            out_lines: List[str] = []
+            for s in range(args.edo):
+                matches = edo_results.get(s, [])
+                for (it, _d) in matches:
+                    out_lines.append(it.ratio)
+            print("\n".join(out_lines))
+            return
+
         # JSON: serialize per-step matches
         if args.format == "json":
             step_size = 1200.0 / args.edo
@@ -402,6 +413,12 @@ def main() -> None:
 
     if args.format == "csv":
         print(format_csv(items), end="")
+        return
+
+    if args.format == "ratios":
+        # Print only the ratio column for the global items list
+        for it in items:
+            print(it.ratio)
         return
 
     # ratios-only: print one representative ratio per bin (newline-delimited), require full coverage
