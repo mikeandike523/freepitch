@@ -168,47 +168,54 @@ def eval_duration_expr(expr: str, *, env: dict[str, float] | None = None) -> flo
 
 
 # ============================================================
-# SIMPLE PARSER (updated)
+# SIMPLE PARSER (dot-joined notation only)
 # ============================================================
 
 def parse_lines(text: str, *, dur_env: dict[str, float] | None = None):
     """Return list of tuples (note_text|None, octave|None, duration_seconds).
 
-    Duration token can now be an expression and may include parentheses.
-    Examples:
-      C 3 e*6
-      C 3 (e*3)/2
-      R bar - e
+    Dot-joined notation allows multiple notes per line:
+      C.3.e*2 D.3.e*2 R.e
 
-    If your duration expression contains spaces, everything after octave (or note for rests)
-    is treated as duration text.
+    Rest tokens use a dot-joined duration:
+      R.e
+      -.e
     """
+
+    rest_tokens = {"R", "-", "rest", "REST"}
+
+    def parse_dot_token(token: str):
+        if "." not in token:
+            raise ValueError(f"Bad token (missing dots): {token!r}")
+        head = token.split(".", 1)[0]
+        if head in rest_tokens:
+            _, dur_txt = token.split(".", 1)
+            if not dur_txt:
+                raise ValueError(f"Bad rest token: {token!r}")
+            return (None, None, eval_duration_expr(dur_txt, env=dur_env))
+        if head not in NAMES_TO_INDEX:
+            raise ValueError(f"Bad note token: {token!r}")
+        parts = token.split(".", 2)
+        if len(parts) != 3:
+            raise ValueError(f"Bad note token: {token!r}")
+        _, octave_txt, dur_txt = parts
+        if not octave_txt or not dur_txt:
+            raise ValueError(f"Bad note token: {token!r}")
+        octave = int(octave_txt)
+        return (head, octave, eval_duration_expr(dur_txt, env=dur_env))
 
     out = []
     for raw in text.splitlines():
         line = raw.strip()
-        if not line or line.startswith("#"):
+        if not line:
             continue
+        if line == "#":
+            continue
+        if line.startswith("#"):
+            raise ValueError(f"Comments must be a lone '#': {raw!r}")
 
         parts = line.split()
-
-        if len(parts) < 2:
-            raise ValueError(f"Bad line: {raw!r}")
-
-        # rest form: "R <dur expr>" or "- <dur expr>"
-        if parts[0] in ("R", "-", "rest", "REST"):
-            dur_txt = " ".join(parts[1:])
-            out.append((None, None, eval_duration_expr(dur_txt, env=dur_env)))
-            continue
-
-        # note form: "<note> <octave> <dur expr>"
-        if len(parts) < 3:
-            raise ValueError(f"Bad line: {raw!r}")
-
-        note_txt = parts[0]
-        octave = int(parts[1])
-        dur_txt = " ".join(parts[2:])
-
-        out.append((note_txt, octave, eval_duration_expr(dur_txt, env=dur_env)))
+        for token in parts:
+            out.append(parse_dot_token(token))
 
     return out

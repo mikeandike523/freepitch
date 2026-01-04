@@ -61,174 +61,74 @@ def write_notes(track: EventScheduler, start: float, notes):
 
 
 # ============================================================
-# MUSIC (your existing material, reformatted into parser syntax)
+# MUSIC (dot-joined notation, one or more notes per line)
 # ============================================================
 
-BASSLINE_1 = """
-# bassline
-C 3 e*6
-C 3 e*2
-F 3 e*4
-G 2 e*4
-"""
+BASSLINE_LINES = """
+#
+C.3.e*6 C.3.e*2
+F.3.e*4 G.2.e*4
 
-BASSLINE_2 = """
-# bassline2
-C 3 e*2
-C 3 e*2
-C 3 e*2
-C 3 e*2
-F 3 e*2
-F 3 e*2
-G 2 e*2
-G 2 e*2
-"""
+#
+C.3.e*2 C.3.e*2
+C.3.e*2 C.3.e*2
+F.3.e*2 F.3.e*2
+G.2.e*2 G.2.e*2
 
-BASELINE_3 = """
-# baseline3: pattern1 x2
-C 3 e
-G 3 e
-E 3 e
-G 3 e
-C 3 e
-G 3 e
-E 3 e
-G 3 e
+#
+C.3.e G.3.e E.3.e G.3.e
+C.3.e G.3.e E.3.e G.3.e
+C#.3.e A.3.e E.3.e A.3.e
+A.2.e E.3.e G.3.e E.3.e
 
+D.3.e F.3.e A.3.e F.3.e
+D.3.e F.3.e A.3.e F.3.e
+G.2.e B.2.e D.3.e F.3.e A.3.e F.3.e D.3.e G.2.e
+""".splitlines()
 
-C# 3 e
-A 3 e
-E 3 e
-A 3 e
+MELODY_LINES = """
+#
+C.4.e E.4.e G.4.e B.4.e
+A.4.e G.4.e E.4.e C.4.e
+D.4.e F.4.e A.4.e C.5.e
+B.4.e*4
 
-A 2 e
-E 3 e
-G 3 e
-E 3 e
-"""
+#
+C.4.e E.4.e G.4.e B.4.e
+A.4.e G.4.e E.4.e C.4.e
+D.4.e F.4.e A.4.e C.5.e
+B.4.e*2 A.4.e B.4.e
 
-BASSLINE_4 = """
-D 3 e
-F 3 e
-A 3 e
-F 3 e
+#
+B.4.q
+A.4.q*3
+B.4.e B.4.e A.4.e B.4.e+e*4
 
-D 3 e
-F 3 e
-A 3 e
-F 3 e
+#
+R.e
+C.5.e C.5.e B.4.e C.5.e B.4.e
+R.e B.4.e
+F.4.e*2 E.4.e F.4.e+q*2
 
-G 2 e
-B 2 e
-D 3 e
-F 3 e
-A 3 e
-F 3 e
-D 3 e
-G 2 e
-
-"""
-
-BASSLINE_5="""
-
-
-"""
-
-MELODY_1 = """
-# melody
-C 4 e
-E 4 e
-G 4 e
-B 4 e
-A 4 e
-G 4 e
-E 4 e
-C 4 e
-D 4 e
-F 4 e
-A 4 e
-C 5 e
-B 4 e*4
-"""
-
-MELODY_2 = """
-# melody2
-C 4 e
-E 4 e
-G 4 e
-B 4 e
-A 4 e
-G 4 e
-E 4 e
-C 4 e
-D 4 e
-F 4 e
-A 4 e
-C 5 e
-B 4 e*2
-A 4 e
-B 4 e
-"""
-
-MELODY_3 = """
-# melody3
-B 4 q
-A 4 q*3
-B 4 e
-B 4 e
-A 4 e
-B 4 e+e*4  
-"""
-
-MELODY_4 = """
-# melody4
-R e
-C 5 e
-C 5 e
-B 4 e
-C 5 e
-B 4 e
-R e
-B 4 e
-
-F 4 e*2
-E 4 e
-F 4 e+q*2
-"""
-
-MELODY_5="""
-R e
-A 4 e
-A 4 e
-G 4 e
-A 4 e
-R e*2
-G 4 e
-E 4 e
-E 4 e
-D 4 e
-E 4 q
-G 4 q+e
-"""
-
+R.e
+R.e
+A.4.e A.4.e G.4.e A.4.e
+R.e*2
+G.4.e E.4.e E.4.e D.4.e
+E.4.q G.4.q+e
+""".splitlines()
 
 # ============================================================
 # SCHEDULE / RENDER
 # ============================================================
 
 acc = 0.0
-acc += write_notes(track1, acc, parse_lines(BASSLINE_1))
-acc += write_notes(track1, acc, parse_lines(BASSLINE_2))
-acc += write_notes(track1, acc, parse_lines(BASELINE_3))
-acc += write_notes(track1, acc, parse_lines(BASSLINE_4))
-acc += write_notes(track1, acc, parse_lines(BASSLINE_5))
+for line in BASSLINE_LINES:
+    acc += write_notes(track1, acc, parse_lines(line))
 
 acc = 0.0
-acc += write_notes(track2, acc, parse_lines(MELODY_1))
-acc += write_notes(track2, acc, parse_lines(MELODY_2))
-acc += write_notes(track2, acc, parse_lines(MELODY_3))
-acc += write_notes(track2, acc, parse_lines(MELODY_4))
-acc += write_notes(track2, acc, parse_lines(MELODY_5))
+for line in MELODY_LINES:
+    acc += write_notes(track2, acc, parse_lines(line))
 
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
