@@ -233,7 +233,7 @@ for line in MELODY_LINES:
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
 
-frames = mix(((10 ** (-3 / 20), frames1), (10 ** (-18 / 20), frames2)))
+frames = mix(((10 ** (-3 / 20), frames1), (10 ** (-19.5 / 20), frames2)))
 
 
 print("Playing...")
