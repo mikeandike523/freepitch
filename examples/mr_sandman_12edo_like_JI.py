@@ -64,7 +64,12 @@ def write_notes(track: EventScheduler, start: float, notes):
 # MUSIC (dot-joined notation, one or more notes per line)
 # ============================================================
 
+# Credit:
+# https://sheetsfree.com/sheets/C/The%20Chordettes%20-%20Mister%20Sandman%20%28Lead%20Sheet%29.pdf
+# https://tabs.ultimate-guitar.com/tab/the-chordettes/mr-sandman-chords-847467
+
 BASSLINE_LINES = """
+
 # intro bar 1
 C.3.e*6 C.3.e*2
 F.3.e*4 G.2.e*4
@@ -80,21 +85,32 @@ C.3.e G.3.e E.3.e G.3.e
 C.3.e G.3.e E.3.e G.3.e
 
 # Give me a dream
-C#.3.e A.3.e E.3.e A.3.e
-A.2.e E.3.e G.3.e E.3.e
+
+B.2.e F#.3.e D#.3.e F#.3.e
+B.2.e B.2.e C#.3.e D#.3.e
+
 
 # Make him the cutest that I've ever seen
-D.3.e F.3.e A.3.e F.3.e
-D.3.e F.3.e A.3.e F.3.e
-G.2.e B.2.e D.3.e F.3.e A.3.e F.3.e D.3.e G.2.e
+E.3.e B.3.e G#.3.e B.3.e
+E.3.e B.3.e G#.3.e B.3.e
+
+A.2.e E.3.e C#.3.e E.3.e
+A.2.e A.2.e B.2.e C#.3.e
 
 # Give him two lips
-C.3.e E.3.e G.3.e E.3.e
-A.2.e E.3.e C.3.e E.3.e
+D.3.e A.3.e F#.3.e A.3.e
+C.4.e A.3.e F#.3.e D.3.e
 
 # like roses and clovers
-G.2.e B.2.e D.3.e
-C.3.e E.3.e C.3.e G.2.e E.2.e
+B.2.e G.2.e B.2.e D.3.e
+F.3.e G.2.e A.2.e B.2.e
+
+# and tell me that my lonesome nights are over
+C.3.e G.3.e E.3.e G.3.e
+C.3.e G.3.e E.3.e G.3.e
+Ab.3.e Eb.3.e C.3.e Ab.2.e
+G.2.e B.2.e D.3.e F.3.e
+
 """.splitlines()
 
 MELODY_LINES = """
@@ -121,16 +137,20 @@ B.4.e B.4.e A.4.e B.4.e+e*4
 R.e
 C.5.e C.5.e B.4.e C.5.e B.4.e
 R.e B.4.e
-F.4.e E.4.e E.4.e F.4.e+q*2
+F.4.e F.4.e E.4.e F.4.e+q*2
 
 # Give him two lips
 R.e
-A.4.e A.4.e G.4.e A.4.e
+B.4.e B.4.e A.4.e B.4.e
 R.e*2
 
 # Like roses and clovers
-G.4.e E.4.e E.4.e D.4.e
+A.4.e E.4.e E.4.e D.4.e
 E.4.q G.4.q+e
+
+# and tell me that my lonesome nights are over
+R.e
+D.5.e D.5.e C.5.e D.5.e C.5.e D.5.e C.5.e Eb.5.q Eb.5.q E.5.e D.5.e
 """.splitlines()
 
 # ============================================================

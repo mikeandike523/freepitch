@@ -212,7 +212,7 @@ def parse_lines(text: str, *, dur_env: dict[str, float] | None = None):
         if line == "#":
             continue
         if line.startswith("#"):
-            raise ValueError(f"Comments must be a lone '#': {raw!r}")
+            continue
 
         parts = line.split()
         for token in parts:
