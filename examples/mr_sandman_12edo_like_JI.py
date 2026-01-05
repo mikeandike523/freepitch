@@ -159,7 +159,7 @@ B.4.e*4
 C.4.e E.4.e G.4.e B.4.e
 A.4.e G.4.e E.4.e C.4.e
 D.4.e F.4.e A.4.e C.5.e
-B.4.e*2 A.4.e B.4.e
+B.4.e*2 G.4.e A.4.e
 
 # Mr sandman 
 B.4.q
