@@ -1,11 +1,54 @@
 from src.audio.mixing import mix
 from src.audio.stereo_audio import StereoAudio
 from src.audio.event_scheduler import EventScheduler, RetriggerMode
-
-from examples.note_parser import NoteName, parse_lines
-from examples.synth_factory import CustomState, build_synth_factories
+from src.audio.note_parsing import build_note_parser
+from src.audio.note_sequence import schedule_parsed_notes
+from src.audio.synth_factory import CustomState, build_synth_factories
 
 SAMPLE_RATE = 48_000
+
+# C5 is 3 semitones above A4
+# The -1 makes it go to the octave below
+REFERENCE_A_FREQ = 440
+REFERENCE_C_FREQ = REFERENCE_A_FREQ * 9 / 16
+
+#  ./__inenv python experiments/pick_ji.py --primes=2,3,5 --max-int=64 --edo=12 --per-step=1 --format ratios
+SCALE = [
+    1 / 1,
+    16 / 15,
+    9 / 8,
+    32 / 27,
+    5 / 4,
+    4 / 3,
+    45 / 32,
+    3 / 2,
+    8 / 5,
+    27 / 16,
+    16 / 9,
+    15 / 8,
+]
+
+NAMES_TO_INDEX = {
+    "C": 0,
+    "C#": 1,
+    "Db": 1,
+    "D": 2,
+    "D#": 3,
+    "Eb": 3,
+    "E": 4,
+    "F": 5,
+    "F#": 6,
+    "Gb": 6,
+    "G": 7,
+    "G#": 8,
+    "Ab": 8,
+    "A": 9,
+    "A#": 10,
+    "Bb": 10,
+    "B": 11,
+}
+
+NOTE_PARSER = build_note_parser(NAMES_TO_INDEX, SCALE, REFERENCE_C_FREQ)
 
 
 # ============================================================
@@ -40,24 +83,12 @@ track2 = EventScheduler(
 )
 
 
-def write_notes(track: EventScheduler, start: float, notes):
-    acc = start
-    for (text, octave, dur) in notes:
-        if text is None:
-            acc += dur
-            continue
-        note_name = NoteName(text, octave)
-        track.add_note(
-            acc,
-            dur,
-            CustomState(
-                pitch=note_name.get_pitch(),
-                note_id=note_name.get_note_id(),
-                volume=1,
-            ),
-        )
-        acc += dur
-    return acc - start
+def make_state(note_name, note):
+    return CustomState(
+        pitch=note_name.get_pitch(),
+        note_id=note_name.get_note_id(),
+        volume=note.volume,
+    )
 
 
 # ============================================================
@@ -224,11 +255,23 @@ R.e*4
 
 acc = 0.0
 for line in BASSLINE_LINES:
-    acc += write_notes(track1, acc, parse_lines(line))
+    acc += schedule_parsed_notes(
+        track1,
+        acc,
+        NOTE_PARSER.parse_lines(line),
+        NOTE_PARSER.note_name,
+        make_state,
+    )
 
 acc = 0.0
 for line in MELODY_LINES:
-    acc += write_notes(track2, acc, parse_lines(line))
+    acc += schedule_parsed_notes(
+        track2,
+        acc,
+        NOTE_PARSER.parse_lines(line),
+        NOTE_PARSER.note_name,
+        make_state,
+    )
 
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
