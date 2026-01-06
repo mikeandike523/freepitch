@@ -10,23 +10,9 @@ SAMPLE_RATE = 48_000
 # C5 is 3 semitones above A4
 # The -1 makes it go to the octave below
 REFERENCE_A_FREQ = 440
-REFERENCE_C_FREQ = REFERENCE_A_FREQ * 9 / 16
+REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** (3/12-1)
 
-#  ./__inenv python experiments/pick_ji.py --primes=2,3,5 --max-int=64 --edo=12 --per-step=1 --format ratios
-SCALE = [
-    1 / 1,
-    16 / 15,
-    9 / 8,
-    32 / 27,
-    5 / 4,
-    4 / 3,
-    45 / 32,
-    3 / 2,
-    8 / 5,
-    27 / 16,
-    16 / 9,
-    15 / 8,
-]
+SCALE = tuple(2**(i/12) for i in range(12))
 
 NAMES_TO_INDEX = {
     "C": 0,
