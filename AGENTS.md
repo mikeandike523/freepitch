@@ -1,4 +1,4 @@
-# AGENTS.txt
+# AGENTS.md
 
 ## Development Tips
 
