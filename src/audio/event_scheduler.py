@@ -5,6 +5,9 @@ from enum import Enum, auto
 import json
 import math
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+import warnings
+
+from tqdm import tqdm
 from src.audio.adsr_types import ADSR, ADSRStage
 from src.audio.core import CallbackSynth, AudioBuffer
 
@@ -353,8 +356,15 @@ to throw error if not true.
             )
             return voices_sorted[0]
 
-    def render_collect(self, silence_amplitude=10 ** (-60 / 20)):
-        gen = self.render(silence_amplitude)
+    def render_collect(
+        self,
+        silence_db: float = -60.0,
+        max_seconds_after_last_note_off: float = 4.0,
+    ):
+        gen = self.render(
+            silence_db=silence_db,
+            max_seconds_after_last_note_off=max_seconds_after_last_note_off,
+        )
         frames = []
         while True:
             try:
@@ -368,7 +378,12 @@ to throw error if not true.
     # go tick by tick
     # In the future, will want to write algorithms
     # to mark regions of silence and skip
-    def render(self, silence_amplitude=10 ** (-60 / 20)):
+    def render(
+        self,
+        silence_db: float = -60.0,
+        max_seconds_after_last_note_off: float = 4.0,
+    ):
+        silence_amplitude = 10 ** (silence_db / 20)
 
         # Step 1. Perform disambiguation rules
 
@@ -380,101 +395,171 @@ to throw error if not true.
             sorted(remaining_bins.items(), key=lambda item: item[0])
         )
 
+        if not remaining_bins:
+            warnings.warn(
+                "EventScheduler.render received no events after simplification; "
+                "rendering an empty AudioBuffer.",
+                RuntimeWarning,
+            )
+            return
+
+        last_note_off_sample_index: Optional[int] = None
+        last_event_sample_index = max(remaining_bins.keys())
+
+        for bin_index, event_bin in remaining_bins.items():
+            for events_for_note_id in event_bin.events.values():
+                for event in events_for_note_id:
+                    if event.kind == EventKind.NOTE_OFF:
+                        if (
+                            last_note_off_sample_index is None
+                            or bin_index > last_note_off_sample_index
+                        ):
+                            last_note_off_sample_index = bin_index
+
+        if last_note_off_sample_index is None:
+            warnings.warn(
+                "EventScheduler.render detected events but no NOTE_OFF events after "
+                "simplification; invalid track. Rendering an empty AudioBuffer.",
+                RuntimeWarning,
+            )
+            return
+
+        max_samples_after_last_note_off = int(
+            max_seconds_after_last_note_off * self._sample_rate
+        )
+        estimated_end_sample = (
+            max(last_event_sample_index, last_note_off_sample_index)
+            + max_samples_after_last_note_off
+        )
+        estimated_total_blocks = max(
+            1, math.ceil(estimated_end_sample / self._buffer_size)
+        )
+
+        progress = tqdm(
+            total=estimated_total_blocks,
+            desc="Rendering",
+            unit="block",
+        )
+
         block_frames = None
 
         num_processed_blocks = 0
 
-        while (
-            block_frames is None
-            # or any(
-            #     abs(l) > silence_amplitude or abs(r) > silence_amplitude
-            #     for l, r in block_frames
-            # )
-            or any(voice.is_running() for voice in self.voices)
-            or remaining_bins
-        ):
-            print(
-                f"Processing block {num_processed_blocks}, total seconds={num_processed_blocks*self._buffer_size/self._sample_rate:.3f}..."
-            )
-            cursor = num_processed_blocks * self._buffer_size
-            block_event_bins = []
-            while True:
-                if remaining_bins:
-                    next_bin_index, next_bin = next(iter(remaining_bins.items()))
-                    if next_bin_index < cursor + self._buffer_size:
-                        block_event_bins.append((next_bin_index, next_bin))
-                        del remaining_bins[next_bin_index]
+        try:
+            while (
+                block_frames is None
+                or any(voice.is_running() for voice in self.voices)
+                or remaining_bins
+            ):
+                cursor = num_processed_blocks * self._buffer_size
+                block_event_bins = []
+                while True:
+                    if remaining_bins:
+                        next_bin_index, next_bin = next(iter(remaining_bins.items()))
+                        if next_bin_index < cursor + self._buffer_size:
+                            block_event_bins.append((next_bin_index, next_bin))
+                            del remaining_bins[next_bin_index]
+                        else:
+                            break
                     else:
                         break
-                else:
+
+                block_frames = []
+                segment_start = 0
+
+                def render_segment(num_samples: int) -> List[Tuple[float, float]]:
+                    if num_samples <= 0:
+                        return []
+                    mix_left = [0.0] * num_samples
+                    mix_right = [0.0] * num_samples
+                    for voice in self.voices:
+                        if not voice.is_running():
+                            continue
+                        voice_frames = voice.process(num_samples)
+                        for i, (l, r) in enumerate(voice_frames):
+                            mix_left[i] += l
+                            mix_right[i] += r
+                    return list(zip(mix_left, mix_right))
+
+                for bin_index, event_bin in block_event_bins:
+                    # sample index, even bin
+                    offset_in_block = bin_index - cursor
+                    segment_length = offset_in_block - segment_start
+                    if segment_length > 0:
+                        block_frames.extend(render_segment(segment_length))
+                        segment_start = offset_in_block
+                    for note_id, events_for_note_id in event_bin.events.items():
+                        for event in events_for_note_id:
+                            if event.kind == EventKind.NOTE_ON:
+                                retrigger_voice = None
+                                if (
+                                    self._retrigger_mode
+                                    is not RetriggerMode.ALLOW_TAILS
+                                ):
+                                    retrigger_voice = self._get_retrigger_voice(note_id)
+                                if (
+                                    retrigger_voice
+                                    and self._retrigger_mode
+                                    is RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+                                    and self._is_using_adsr
+                                ):
+                                    retrigger_voice.note_on(
+                                        note_id,
+                                        event.data,
+                                        global_sample_index=bin_index,
+                                        reset_adsr=False,
+                                        reset_synth=False,
+                                        trigger_adsr=True,
+                                    )
+                                else:
+                                    voice = retrigger_voice or self._get_or_steal_voice()
+                                    voice.note_on(
+                                        note_id,
+                                        event.data,
+                                        global_sample_index=bin_index,
+                                    )
+                            elif event.kind == EventKind.NOTE_OFF:
+                                target_voice = next(
+                                    (
+                                        voice
+                                        for voice in self.voices
+                                        if voice.is_running()
+                                        and voice.get_current_note_id() == note_id
+                                    ),
+                                    None,
+                                )
+                                if target_voice is not None:
+                                    target_voice.note_off(global_sample_index=bin_index)
+
+                remaining_samples = self._buffer_size - segment_start
+                if remaining_samples > 0:
+                    block_frames.extend(render_segment(remaining_samples))
+
+                num_processed_blocks += 1
+                progress.update(1)
+
+                cursor_end = cursor + self._buffer_size
+                past_last_event = cursor_end >= last_event_sample_index
+
+                should_stop = False
+                if past_last_event and cursor_end >= (
+                    last_note_off_sample_index + max_samples_after_last_note_off
+                ):
+                    should_stop = True
+
+                if past_last_event and not remaining_bins:
+                    if not any(voice.is_running() for voice in self.voices):
+                        should_stop = True
+                    if all(
+                        abs(l) <= silence_amplitude and abs(r) <= silence_amplitude
+                        for l, r in block_frames
+                    ):
+                        should_stop = True
+
+                yield block_frames
+                if should_stop:
                     break
-
-            block_frames = []
-            segment_start = 0
-
-            def render_segment(num_samples: int) -> List[Tuple[float, float]]:
-                if num_samples <= 0:
-                    return []
-                mix_left = [0.0] * num_samples
-                mix_right = [0.0] * num_samples
-                for voice in self.voices:
-                    if not voice.is_running():
-                        continue
-                    voice_frames = voice.process(num_samples)
-                    for i, (l, r) in enumerate(voice_frames):
-                        mix_left[i] += l
-                        mix_right[i] += r
-                return list(zip(mix_left, mix_right))
-
-            for bin_index, event_bin in block_event_bins:
-                # sample index, even bin
-                offset_in_block = bin_index - cursor
-                segment_length = offset_in_block - segment_start
-                if segment_length > 0:
-                    block_frames.extend(render_segment(segment_length))
-                    segment_start = offset_in_block
-                for note_id, events_for_note_id in event_bin.events.items():
-                    for event in events_for_note_id:
-                        if event.kind == EventKind.NOTE_ON:
-                            retrigger_voice = None
-                            if self._retrigger_mode is not RetriggerMode.ALLOW_TAILS:
-                                retrigger_voice = self._get_retrigger_voice(note_id)
-                            if (
-                                retrigger_voice
-                                and self._retrigger_mode
-                                is RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
-                                and self._is_using_adsr
-                            ):
-                                retrigger_voice.note_on(
-                                    note_id,
-                                    event.data,
-                                    global_sample_index=bin_index,
-                                    reset_adsr=False,
-                                    reset_synth=False,
-                                    trigger_adsr=True,
-                                )
-                            else:
-                                voice = retrigger_voice or self._get_or_steal_voice()
-                                voice.note_on(
-                                    note_id, event.data, global_sample_index=bin_index
-                                )
-                        elif event.kind == EventKind.NOTE_OFF:
-                            target_voice = next(
-                                (
-                                    voice
-                                    for voice in self.voices
-                                    if voice.is_running()
-                                    and voice.get_current_note_id() == note_id
-                                ),
-                                None,
-                            )
-                            if target_voice is not None:
-                                target_voice.note_off(global_sample_index=bin_index)
-
-            remaining_samples = self._buffer_size - segment_start
-            if remaining_samples > 0:
-                block_frames.extend(render_segment(remaining_samples))
-
-            num_processed_blocks += 1
-
-            yield block_frames
+        finally:
+            if progress.n < progress.total:
+                progress.update(progress.total - progress.n)
+            progress.close()
