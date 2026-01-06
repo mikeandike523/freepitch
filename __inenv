@@ -12,7 +12,11 @@ else
     export PYTHONPATH="$script_dir:$PYTHONPATH"
 fi
 
-# windows only
-source "$script_dir/.venv/Scripts/activate"
+# Activate virtualenv if present (Windows first, then Unix)
+if [ -f "$script_dir/.venv/Scripts/activate" ]; then
+    source "$script_dir/.venv/Scripts/activate"
+elif [ -f "$script_dir/.venv/bin/activate" ]; then
+    source "$script_dir/.venv/bin/activate"
+fi
 
 "$@"
