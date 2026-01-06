@@ -25,8 +25,9 @@ fi
 
 chmod +x ./__inenv
 
-mkdir -p output_file
+mkdir -p output_files
 mkdir -p agent_scratchpad
+
 
 # Philosophy: "During setup, we maintain for the first time"
 # Helps DRY (Don't Repeat Yourself)
