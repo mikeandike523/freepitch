@@ -1,8 +1,11 @@
+import os
+
 from src.audio.mixing import mix
 from src.audio.stereo_audio import StereoAudio
 from src.audio.event_scheduler import EventScheduler, RetriggerMode
 from src.audio.note_parsing import build_note_parser
 from src.audio.note_sequence import schedule_parsed_notes
+from src.audio.sampler_synth import SamplerState, build_sampler_synth_factory
 from src.audio.synth_factory import CustomState, build_synth_factories
 
 SAMPLE_RATE = 48_000
@@ -36,6 +39,24 @@ NAMES_TO_INDEX = {
 
 NOTE_PARSER = build_note_parser(NAMES_TO_INDEX, SCALE, REFERENCE_C_FREQ, bpm=96)
 
+DRUM_SAMPLE_DIR = os.path.join(
+    "output_files",
+    "generate_samples",
+    "drumkits",
+    "preset_1",
+)
+
+DRUM_SAMPLE_PATHS = {
+    "K": os.path.join(DRUM_SAMPLE_DIR, "kick.wav"),
+    "S": os.path.join(DRUM_SAMPLE_DIR, "snare.wav"),
+    "HC": os.path.join(DRUM_SAMPLE_DIR, "hat_closed.wav"),
+    "HO": os.path.join(DRUM_SAMPLE_DIR, "hat_open.wav"),
+}
+
+DRUM_NAMES_TO_INDEX = {name: idx for idx, name in enumerate(DRUM_SAMPLE_PATHS)}
+DRUM_SCALE = tuple(1.0 for _ in DRUM_NAMES_TO_INDEX)
+DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=96)
+
 
 # ============================================================
 # SYNTHS
@@ -65,6 +86,11 @@ create_new_synth_track4, create_new_adsr_track4 = build_synth_factories(
     (0.015, 0.070, 0.55, 0.160),
 )
 
+create_new_drum_synth, drum_buffers = build_sampler_synth_factory(
+    SAMPLE_RATE,
+    DRUM_SAMPLE_PATHS,
+)
+
 
 # ============================================================
 # TRACKS / SCHEDULERS
@@ -86,12 +112,30 @@ track4 = EventScheduler(
     SAMPLE_RATE, 16, create_new_synth_track4, create_new_adsr_track4, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
+track5 = EventScheduler(
+    SAMPLE_RATE,
+    8,
+    create_new_drum_synth,
+    None,
+    1,
+    512,
+    RetriggerMode.CUT_TAILS,
+)
+
 
 def make_state(note_name, note):
     return CustomState(
         pitch=note_name.get_pitch(),
         note_id=note_name.get_note_id(),
         volume=note.volume,
+    )
+
+
+def make_drum_state(note_name, note):
+    return SamplerState(
+        buffer=drum_buffers[note_name.text],
+        volume=note.volume,
+        note_id=note_name.get_note_id(),
     )
 
 
@@ -144,6 +188,17 @@ Bb.3.q:0.5 R.e D.4.e:0.55 F.4.q:0.5 R.e Bb.3.e:0.5
 A.3.q:0.5 R.e C#.4.e:0.55 E.4.q:0.5 R.e A.3.e:0.5
 """.splitlines()
 
+DRUM_LINES = """
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
+K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
+""".splitlines()
+
 # ============================================================
 # SCHEDULE / RENDER
 # ============================================================
@@ -188,10 +243,21 @@ for line in COUNTER_LINES:
         make_state,
     )
 
+acc = 0.0
+for line in DRUM_LINES:
+    acc += schedule_parsed_notes(
+        track5,
+        acc,
+        DRUM_NOTE_PARSER.parse_lines(line),
+        DRUM_NOTE_PARSER.note_name,
+        make_drum_state,
+    )
+
 frames1 = track1.render_collect()
 frames2 = track2.render_collect()
 frames3 = track3.render_collect()
 frames4 = track4.render_collect()
+frames5 = track5.render_collect()
 
 frames = mix(
     (
@@ -199,6 +265,7 @@ frames = mix(
         (10 ** (-15 / 20), frames2),
         (10 ** (-10 / 20), frames3),
         (10 ** (-13 / 20), frames4),
+        (10 ** (-9 / 20), frames5),
     )
 )
 
