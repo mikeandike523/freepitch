@@ -11,34 +11,56 @@ from src.audio.synth_factory import CustomState, build_synth_factories
 
 SAMPLE_RATE = 48_000
 
-# C5 is 3 semitones above A4
+BPM=70
+
+# C5 is 8 edosteps above A4
 # The -1 makes it go to the octave below
 REFERENCE_A_FREQ = 440
-REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** (3 / 12 - 1)
+REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** ((4+1+2+1) / 31 - 1)
 
-SCALE = tuple(2 ** (i / 12) for i in range(12))
+SCALE = tuple(2 ** (i / 31) for i in range(31))
 
-NAMES_TO_INDEX = {
-    "C": 0,
-    "C#": 1,
-    "Db": 1,
-    "D": 2,
-    "D#": 3,
-    "Eb": 3,
-    "E": 4,
-    "F": 5,
-    "F#": 6,
-    "Gb": 6,
-    "G": 7,
-    "G#": 8,
-    "Ab": 8,
-    "A": 9,
-    "A#": 10,
-    "Bb": 10,
-    "B": 11,
-}
+def make_suffix_cycle(entries: list[tuple[str, list[str]]]) -> list[str]:
+    names: list[str] = []
+    for letter, suffixes in entries:
+        for suffix in suffixes:
+            names.append(f"{letter}{suffix}")
+    return names
 
-NOTE_PARSER = build_note_parser(NAMES_TO_INDEX, SCALE, REFERENCE_C_FREQ, bpm=96)
+
+NOTE_NAMES_SHARPWARDS = make_suffix_cycle(
+    [
+        ("C", ["", "t", "#", "#t", "x"]),
+        ("D", ["", "t", "#", "#t", "x"]),
+        ("E", ["", "t", "#"]),
+        ("F", ["", "t", "#", "#t", "x"]),
+        ("G", ["", "t", "#", "#t", "x"]),
+        ("A", ["", "t", "#", "#t", "x"]),
+        ("B", ["", "t", "#"]),
+    ]
+)
+
+NOTE_NAMES_FLATWARDS = make_suffix_cycle(
+    [
+        ("C", ["d", "b"]),
+        ("B", ["", "d", "b", "db", "bb"]),
+        ("A", ["", "d", "b", "db", "bb"]),
+        ("G", ["", "d", "b", "db", "bb"]),
+        ("F", ["", "d", "b"]),
+        ("E", ["", "d", "b", "db", "bb"]),
+        ("D", ["", "d", "b", "db", "bb"]),
+        ("C", [""])
+    ]
+)
+
+NAMES_TO_INDEX: dict[str, int] = {}
+for idx in range(31):
+    sharp_name = NOTE_NAMES_SHARPWARDS[idx]
+    flat_name = NOTE_NAMES_FLATWARDS[30 - idx]
+    NAMES_TO_INDEX[sharp_name] = idx
+    NAMES_TO_INDEX[flat_name] = idx
+
+NOTE_PARSER = build_note_parser(NAMES_TO_INDEX, SCALE, REFERENCE_C_FREQ, bpm=BPM)
 
 def find_repo_root(start_path: str) -> str:
     current = os.path.abspath(start_path)
@@ -101,7 +123,7 @@ DRUM_SAMPLE_VOLUMES = {
 
 DRUM_NAMES_TO_INDEX = {name: idx for idx, name in enumerate(DRUM_SAMPLE_PATHS)}
 DRUM_SCALE = tuple(1.0 for _ in DRUM_NAMES_TO_INDEX)
-DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=96)
+DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=BPM)
 
 
 # ============================================================
@@ -110,13 +132,13 @@ DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=9
 
 create_new_synth_track1, create_new_adsr_track1 = build_synth_factories(
     SAMPLE_RATE,
-    "sine",
+    "triangle",
     (0.020, 0.080, 0.7, 0.180),
 )
 
 create_new_synth_track2, create_new_adsr_track2 = build_synth_factories(
     SAMPLE_RATE,
-    "triangle",
+    "square",
     (0.040, 0.120, 0.6, 0.240),
 )
 
@@ -128,7 +150,7 @@ create_new_synth_track3, create_new_adsr_track3 = build_synth_factories(
 
 create_new_synth_track4, create_new_adsr_track4 = build_synth_factories(
     SAMPLE_RATE,
-    "square",
+    "saw",
     (0.015, 0.070, 0.55, 0.160),
 )
 
@@ -191,59 +213,34 @@ def make_drum_state(note_name, note):
 # ============================================================
 
 BASS_LINES = """
-# D minor -> Bb -> F -> C -> D minor -> G minor -> Bb -> A
-D.2.q:0.9 A.1.q:0.75 D.2.q:0.85 A.1.q:0.75
-Bb.1.q:0.85 F.1.q:0.7 Bb.1.q:0.8 F.1.q:0.7
-F.2.q:0.85 C.2.q:0.7 F.2.q:0.8 C.2.q:0.7
-C.2.q:0.85 G.1.q:0.7 C.2.q:0.8 G.1.q:0.7
-D.2.q:0.9 A.1.q:0.75 D.2.q:0.85 A.1.q:0.75
-G.1.q:0.85 D.2.q:0.7 G.1.q:0.8 D.2.q:0.7
-Bb.1.q:0.85 F.1.q:0.7 Bb.1.q:0.8 F.1.q:0.7
-A.1.q:0.9 E.2.q:0.7 A.1.q:0.85 E.2.q:0.7
+
 """.splitlines()
 
 HARMONY_LINES = """
-F.3.e:0.45 A.3.e:0.45 D.4.e:0.45 A.3.e:0.4 F.3.e:0.4 A.3.e:0.4 D.4.e:0.4 A.3.e:0.4
-F.3.e:0.42 Bb.3.e:0.42 D.4.e:0.42 F.4.e:0.4 D.4.e:0.4 Bb.3.e:0.4 F.3.e:0.4 D.4.e:0.4
-A.3.e:0.42 C.4.e:0.42 F.4.e:0.42 A.4.e:0.4 F.4.e:0.4 C.4.e:0.4 A.3.e:0.4 C.4.e:0.4
-G.3.e:0.42 C.4.e:0.42 E.4.e:0.42 G.4.e:0.4 E.4.e:0.4 C.4.e:0.4 G.3.e:0.4 C.4.e:0.4
-F.3.e:0.45 A.3.e:0.45 D.4.e:0.45 A.3.e:0.4 F.3.e:0.4 A.3.e:0.4 D.4.e:0.4 A.3.e:0.4
-Bb.2.e:0.42 D.3.e:0.42 G.3.e:0.42 Bb.3.e:0.4 G.3.e:0.4 D.3.e:0.4 Bb.2.e:0.4 D.3.e:0.4
-F.3.e:0.42 Bb.3.e:0.42 D.4.e:0.42 F.4.e:0.4 D.4.e:0.4 Bb.3.e:0.4 F.3.e:0.4 D.4.e:0.4
-C#.3.e:0.42 E.3.e:0.42 A.3.e:0.42 C#.4.e:0.4 A.3.e:0.4 E.3.e:0.4 C#.3.e:0.4 E.3.e:0.4
 """.splitlines()
 
 MELODY_LINES = """
-A.4.q:0.7 D.5.e:0.85 F.5.e:0.9 A.5.q:0.95 G.5.e:0.85 F.5.e:0.8
-F.5.q:0.85 Eb.5.e:0.75 D.5.e:0.7 C.5.q:0.75 D.5.q:0.85
-A.4.q:0.7 C.5.e:0.8 F.5.e:0.9 A.5.q:0.95 G.5.e:0.85 F.5.e:0.8
-E.5.q:0.8 D.5.e:0.75 C.5.e:0.7 B.4.q:0.7 C.5.q:0.8
-A.4.q:0.7 D.5.e:0.85 F.5.e:0.9 A.5.q:0.95 G.5.e:0.85 F.5.e:0.8
-G.5.q:0.85 Bb.5.e:0.9 A.5.e:0.85 G.5.q:0.8 F.5.q:0.75
-D.5.q:0.8 F.5.e:0.85 G.5.e:0.9 Bb.5.q:0.9 A.5.q:0.85
-C#.5.q:0.8 E.5.e:0.85 A.5.e:0.9 G.5.q:0.85 F.5.q:0.75
 """.splitlines()
 
 COUNTER_LINES = """
-D.4.q:0.5 R.e A.4.e:0.55 F.4.q:0.5 R.e D.4.e:0.5
-Bb.3.q:0.5 R.e D.4.e:0.55 F.4.q:0.5 R.e Bb.3.e:0.5
-F.4.q:0.5 R.e A.4.e:0.55 C.5.q:0.5 R.e A.4.e:0.5
-C.4.q:0.5 R.e E.4.e:0.55 G.4.q:0.5 R.e E.4.e:0.5
-D.4.q:0.5 R.e A.4.e:0.55 F.4.q:0.5 R.e D.4.e:0.5
-G.3.q:0.5 R.e D.4.e:0.55 Bb.4.q:0.5 R.e G.3.e:0.5
-Bb.3.q:0.5 R.e D.4.e:0.55 F.4.q:0.5 R.e Bb.3.e:0.5
-A.3.q:0.5 R.e C#.4.e:0.55 E.4.q:0.5 R.e A.3.e:0.5
 """.splitlines()
 
 DRUM_LINES = """
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HC.0.e:0.4
-K.0.q:0.9 HC.0.e:0.45 HC.0.e:0.4 S.0.q:0.8 HC.0.e:0.45 HO.0.e:0.3
+
+# Swing drums
+K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
+K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
+
+K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
+K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
+
+K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
+K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
+
+K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
+K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
+
+
 """.splitlines()
 
 # ============================================================
@@ -308,15 +305,15 @@ frames5 = track5.render_collect()
 
 frames = mix(
     (
-        (10 ** (-7 / 20), frames1),
-        (10 ** (-15 / 20), frames2),
-        (10 ** (-10 / 20), frames3),
-        (10 ** (-13 / 20), frames4),
-        (10 ** (-1 / 20), frames5),
+        (10 ** (-3 / 20), frames1), # bass
+        (10 ** (-16.5 / 20), frames2), # harmony
+        (10 ** (-16.5 / 20), frames3), # melody
+        (10 ** (-16.5 / 20), frames4), # counterpoint
+        (10 ** (-3 / 20), frames5),  # drums
     )
 )
 
 print("Playing...")
 se = StereoAudio(frames, SAMPLE_RATE)
 se.play(blocking=True)
-se.export("output_files/starfield_waltz.wav", 24)
+se.export("output_files/31_edo_song.wav", 24)
