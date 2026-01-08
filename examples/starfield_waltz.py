@@ -1,3 +1,4 @@
+import json
 import os
 
 from src.audio.mixing import mix
@@ -39,18 +40,63 @@ NAMES_TO_INDEX = {
 
 NOTE_PARSER = build_note_parser(NAMES_TO_INDEX, SCALE, REFERENCE_C_FREQ, bpm=96)
 
-DRUM_SAMPLE_DIR = os.path.join(
-    "output_files",
-    "generate_samples",
+def find_repo_root(start_path: str) -> str:
+    current = os.path.abspath(start_path)
+    while True:
+        if os.path.isdir(os.path.join(current, ".git")):
+            return current
+        parent = os.path.dirname(current)
+        if parent == current:
+            raise FileNotFoundError("Unable to locate repo root with .git directory.")
+        current = parent
+
+
+def resolve_sample_path(path: str, fallback_dir: str) -> str:
+    expanded = os.path.expanduser(path)
+    if os.path.exists(expanded):
+        return expanded
+    candidate = os.path.join(fallback_dir, os.path.basename(path))
+    if os.path.exists(candidate):
+        return candidate
+    return expanded
+
+
+REPO_ROOT = find_repo_root(os.path.dirname(__file__))
+DRUM_CONFIG_PATH = os.path.join(
+    REPO_ROOT,
+    "input_files",
     "drumkits",
     "preset_1",
+    "setup.json",
 )
 
+with open(DRUM_CONFIG_PATH, "r", encoding="utf-8") as handle:
+    drum_config = json.load(handle)
+
+DRUM_SAMPLE_DIR = os.path.dirname(DRUM_CONFIG_PATH)
+
+DRUM_CONFIG_KEYS = {
+    "K": "kick",
+    "S": "snare",
+    "HC": "hat_closed",
+    "HO": "hat_open",
+    "R": "rimshot",
+    "CL": "clap",
+    "TL": "tom_low",
+    "TM": "tom_mid",
+    "TH": "tom_high",
+}
+
 DRUM_SAMPLE_PATHS = {
-    "K": os.path.join(DRUM_SAMPLE_DIR, "kick.wav"),
-    "S": os.path.join(DRUM_SAMPLE_DIR, "snare.wav"),
-    "HC": os.path.join(DRUM_SAMPLE_DIR, "hat_closed.wav"),
-    "HO": os.path.join(DRUM_SAMPLE_DIR, "hat_open.wav"),
+    note: resolve_sample_path(drum_config[key]["file"], DRUM_SAMPLE_DIR)
+    for note, key in DRUM_CONFIG_KEYS.items()
+    if key in drum_config
+}
+
+DRUM_SAMPLE_VOLUMES = {
+    note: 10 ** (drum_config[key].get("volume_db", 0) / 20)
+    for note, key in DRUM_CONFIG_KEYS.items()
+    if key in drum_config
 }
 
 DRUM_NAMES_TO_INDEX = {name: idx for idx, name in enumerate(DRUM_SAMPLE_PATHS)}
@@ -132,9 +178,10 @@ def make_state(note_name, note):
 
 
 def make_drum_state(note_name, note):
+    sample_volume = DRUM_SAMPLE_VOLUMES.get(note_name.text, 1.0)
     return SamplerState(
         buffer=drum_buffers[note_name.text],
-        volume=note.volume,
+        volume=note.volume * sample_volume,
         note_id=note_name.get_note_id(),
     )
 

@@ -49,9 +49,16 @@ def _resample_audio(
 
 
 def load_audio_buffer(path: str, target_sample_rate: int) -> AudioBuffer:
+    print(f"[sampelr] Loading sample: {path}")
     data, source_rate = sf.read(path, always_2d=True, dtype="float32")
     data = _to_stereo(data)
+    if source_rate != target_sample_rate:
+        print(
+            "[sampelr] Resampling sample:"
+            f" {source_rate} Hz -> {target_sample_rate} Hz"
+        )
     data = _resample_audio(data, source_rate, target_sample_rate)
+    print(f"[sampelr] Loaded {path} ({len(data)} frames).")
     return tuple((float(l), float(r)) for l, r in data.tolist())
 
 
@@ -59,10 +66,12 @@ def build_sampler_synth_factory(
     sample_rate: int,
     sample_paths: Mapping[str, str],
 ) -> tuple[Callable[[], object], dict[str, AudioBuffer]]:
+    print(f"[sampelr] Building sampler buffers ({len(sample_paths)} samples).")
     sample_buffers = {
         name: load_audio_buffer(path, sample_rate)
         for name, path in sample_paths.items()
     }
+    print("[sampelr] Sampler buffers ready.")
 
     def process_callback(
         sample_rate: int, n: int, num_samples: int, state: SamplerState
