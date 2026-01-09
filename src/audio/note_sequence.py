@@ -18,5 +18,4 @@ def schedule_parsed_notes(
         note_name = note_name_factory(note.name, note.octave)
         track.add_note(acc, note.duration, state_factory(note_name, note))
         acc += note.duration
-        print(note.name, note.duration)
     return acc - start

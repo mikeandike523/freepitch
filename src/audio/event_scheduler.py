@@ -445,8 +445,6 @@ to throw error if not true.
                 RuntimeWarning,
             )
             return
-        
-        print(_format_remaining_bins(remaining_bins))
 
         last_note_off_sample_index: Optional[int] = None
         last_event_sample_index = max(remaining_bins.keys())
