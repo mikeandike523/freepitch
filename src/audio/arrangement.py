@@ -121,7 +121,7 @@ class Track:
     def add_note(self, start: float, duration: float, state: object) -> None:
         self._event_scheduler.add_note(start, duration, state)
 
-    def schedule_clip(
+    def schedule_own_root_clip(
         self,
         note_name_factory,
         state_factory,

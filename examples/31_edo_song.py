@@ -10,16 +10,17 @@ from src.audio.event_scheduler import RetriggerMode
 
 SAMPLE_RATE = 48_000
 
-EVENT_BIN_WIDTH=1
+EVENT_BIN_WIDTH = 1
 
-BPM=136
+BPM = 136
 
 # C5 is 8 edosteps above A4
 # The -1 makes it go to the octave below
 REFERENCE_A_FREQ = 440
-REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** ((4+1+2+1) / 31 - 1)
+REFERENCE_C_FREQ = REFERENCE_A_FREQ * 2 ** ((4 + 1 + 2 + 1) / 31 - 1)
 
 SCALE = tuple(2 ** (i / 31) for i in range(31))
+
 
 def make_suffix_cycle(entries: list[tuple[str, list[str]]]) -> list[str]:
     names: list[str] = []
@@ -50,7 +51,7 @@ NOTE_NAMES_FLATWARDS = make_suffix_cycle(
         ("F", ["", "d", "b"]),
         ("E", ["", "d", "b", "db", "bb"]),
         ("D", ["", "d", "b", "db", "bb"]),
-        ("C", [""])
+        ("C", [""]),
     ]
 )
 
@@ -62,6 +63,7 @@ for idx in range(31):
     NAMES_TO_INDEX[flat_name] = idx
 
 NOTE_PARSER = build_note_parser(NAMES_TO_INDEX, SCALE, REFERENCE_C_FREQ, bpm=BPM)
+
 
 def find_repo_root(start_path: str) -> str:
     current = os.path.abspath(start_path)
@@ -126,110 +128,87 @@ DRUM_NAMES_TO_INDEX = {name: idx for idx, name in enumerate(DRUM_SAMPLE_PATHS)}
 DRUM_SCALE = tuple(1.0 for _ in DRUM_NAMES_TO_INDEX)
 DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=BPM)
 
-
 # ============================================================
-# SYNTHS
+# TRACKS / SCHEDULERS
 # ============================================================
 
-synth_track1, adsr_track1 = build_synth_factories(
+bass_track_root_clip = Clip()
+harmony_track_root_clip = Clip()
+meloy_track_root_clip = Clip()
+track4_root_clip = Clip()
+drum_track_root_clip = Clip()
+
+synth_for_bass, adsr_for_bass = build_synth_factories(
     SAMPLE_RATE,
     "triangle",
     (0.020, 0.080, 0.7, 0.180),
 )
 
-synth_track2, adsr_track2 = build_synth_factories(
+synth_for_harmony, adsr_for_harmony = build_synth_factories(
     SAMPLE_RATE,
     "square",
     (0.040, 0.120, 0.6, 0.240),
 )
 
-synth_track3, adsr_track3 = build_synth_factories(
+synth_for_melody, adsr_for_melody = build_synth_factories(
     SAMPLE_RATE,
     "saw",
     (0.010, 0.090, 0.65, 0.180),
 )
 
-synth_track4, adsr_track4 = build_synth_factories(
-    SAMPLE_RATE,
-    "saw",
-    (0.015, 0.070, 0.55, 0.160),
-)
-
-drum_synth, _drum_sampler_config = build_sampler_synth_factory(
+drum_sampler_synth, _drum_sampler_synth_config = build_sampler_synth_factory(
     SAMPLE_RATE,
     DRUM_SAMPLE_PATHS,
 )
 
 
-# ============================================================
-# TRACKS / SCHEDULERS
-# ============================================================
-
-clip1 = Clip()
-clip2 = Clip()
-clip3 = Clip()
-clip4 = Clip()
-clip5 = Clip()
-
-track1 = Track(
+bass_track = Track(
     "bass",
     10 ** (-3 / 20),
-    clip1,
+    bass_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=16,
-    synth_factory=synth_track1,
-    adsr_factory=adsr_track1,
+    synth_factory=synth_for_bass,
+    adsr_factory=adsr_for_bass,
     event_bin_width=EVENT_BIN_WIDTH,
     block_size=512,
     retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track2 = Track(
+harmony_track = Track(
     "harmony",
     10 ** (-16.5 / 20),
-    clip2,
+    harmony_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=16,
-    synth_factory=synth_track2,
-    adsr_factory=adsr_track2,
+    synth_factory=synth_for_harmony,
+    adsr_factory=adsr_for_harmony,
     event_bin_width=EVENT_BIN_WIDTH,
     block_size=512,
     retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track3 = Track(
+melody_track = Track(
     "melody",
     10 ** (-16.5 / 20),
-    clip3,
+    meloy_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=16,
-    synth_factory=synth_track3,
-    adsr_factory=adsr_track3,
+    synth_factory=synth_for_melody,
+    adsr_factory=adsr_for_melody,
     event_bin_width=EVENT_BIN_WIDTH,
     block_size=512,
     retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track4 = Track(
-    "counterpoint",
-    10 ** (-16.5 / 20),
-    clip4,
-    sample_rate=SAMPLE_RATE,
-    polyphony=16,
-    synth_factory=synth_track4,
-    adsr_factory=adsr_track4,
-    event_bin_width=EVENT_BIN_WIDTH,
-    block_size=512,
-    retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
-)
 
-track5 = Track(
+drum_track = Track(
     "drums",
     10 ** (-3 / 20),
-    clip5,
+    drum_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=8,
-    synth_factory=drum_synth,
+    synth_factory=drum_sampler_synth,
     adsr_factory=None,
     event_bin_width=1,
     block_size=512,
@@ -258,26 +237,20 @@ def make_drum_state(note_name, note):
 # MUSIC (dot-joined notation, one note per token)
 # ============================================================
 
-BASS_CLIP = Clip().insert_string(
+bass_clip_1 = Clip().insert_string(
     NOTE_PARSER,
     """
 
 """,
 )
 
-HARMONY_CLIP = Clip().insert_string(
+harmony_clip_1 = Clip().insert_string(
     NOTE_PARSER,
     """
 """,
 )
 
-MELODY_CLIP = Clip().insert_string(
-    NOTE_PARSER,
-    """
-""",
-)
-
-COUNTER_CLIP = Clip().insert_string(
+melody_clip_1 = Clip().insert_string(
     NOTE_PARSER,
     """
 """,
@@ -327,25 +300,24 @@ RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 RS.0.e/2:1.0 RS.0.e/2:1.0
 """,
 )
 
+drum_clip_1 = Clip().add_subclip_at(DRUM_CLIP_A, 0.0).add_subclip_at(DRUM_CLIP_B, 0.0)
 
 
 # ============================================================
 # SCHEDULE / RENDER
 # ============================================================
 
-clip1.add_subclip_at(BASS_CLIP, 0.0)
-clip2.add_subclip_at(HARMONY_CLIP, 0.0)
-clip3.add_subclip_at(MELODY_CLIP, 0.0)
-clip4.add_subclip_at(COUNTER_CLIP, 0.0)
-clip5.add_subclip_at(DRUM_CLIP_A, 0.0).add_subclip_at(DRUM_CLIP_B, 0.0)
+bass_track_root_clip.add_subclip_at(bass_clip_1, 0.0)
+harmony_track_root_clip.add_subclip_at(harmony_clip_1, 0.0)
+meloy_track_root_clip.add_subclip_at(melody_clip_1, 0.0)
+drum_track_root_clip.add_subclip_next(drum_clip_1).add_subclip_next(drum_clip_1)
 
-track1.schedule_clip(NOTE_PARSER.note_name, make_state)
-track2.schedule_clip(NOTE_PARSER.note_name, make_state)
-track3.schedule_clip(NOTE_PARSER.note_name, make_state)
-track4.schedule_clip(NOTE_PARSER.note_name, make_state)
-track5.schedule_clip(DRUM_NOTE_PARSER.note_name, make_drum_state)
+bass_track.schedule_own_root_clip(NOTE_PARSER.note_name, make_state)
+harmony_track.schedule_own_root_clip(NOTE_PARSER.note_name, make_state)
+melody_track.schedule_own_root_clip(NOTE_PARSER.note_name, make_state)
+drum_track.schedule_own_root_clip(DRUM_NOTE_PARSER.note_name, make_drum_state)
 
-master = Master([track1, track2, track3, track4, track5])
+master = Master([bass_track, harmony_track, melody_track, drum_track])
 frames = master.render_collect()
 
 print("Playing...")
