@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 import json
 import math
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Dict, List, Optional, Tuple, TypeVar
 import warnings
 
 from tqdm import tqdm
@@ -169,9 +169,9 @@ class EventScheduler:
 
     Handles note on and off events
     Can handle up to the specified number of simultaneous voices
-    You provide a function that produces a synth (no ADSR): `synth_factory`
-    You provide a function that produces an ADSR instance, if desired: `adsr_factory`
-    The scheduler will create and manage the synths and ADSRs as needed
+    You provide a prototype synth (no ADSR): `synth`
+    You provide a prototype ADSR instance, if desired: `adsr`
+    The scheduler will clone and manage the synths and ADSRs as needed
     Under the assumption that most tracks have some significant ADSR envelope
     The voice-stealing rule is simple:
         If utilizing ADSR:
@@ -237,8 +237,8 @@ class EventScheduler:
 
     """
 
-    _create_new_synth: Callable[[], CallbackSynth]
-    _create_new_adsr: Callable[[], Optional[ADSR]]
+    _synth: CallbackSynth
+    _adsr: Optional[ADSR]
     _is_using_adsr: bool
     _sample_rate: int
     _max_voices: int
@@ -256,8 +256,8 @@ class EventScheduler:
         self,
         sample_rate: int,
         max_voices: int,
-        create_new_synth: Callable[[], CallbackSynth],
-        create_new_adsr: Optional[Callable[[], ADSR]] = None,
+        synth: CallbackSynth,
+        adsr: Optional[ADSR] = None,
         tick_size: Optional[
             int
         ] = 4,  # Default to a small value > 1 to avoid floating point issues
@@ -273,21 +273,19 @@ to throw error if not true.
 """
             )
 
-        self._create_new_synth = create_new_synth
-        self._create_new_adsr = lambda: (
-            None if create_new_adsr is None else create_new_adsr()
-        )
+        self._synth = synth
+        self._adsr = adsr
         self._sample_rate = sample_rate
         self._max_voices = max_voices
         self._buffer_size = buffer_size
         self._tick_size = tick_size
-        self._is_using_adsr = create_new_adsr is not None
+        self._is_using_adsr = adsr is not None
         self._retrigger_mode = retrigger_mode
 
         self.voices = tuple(
             Voice(
-                synth=self._create_new_synth(),
-                adsr=self._create_new_adsr(),  # Will evaluate to None if no create_new_adsr function was provided in constructor
+                synth=self._synth.clone(),
+                adsr=None if self._adsr is None else self._adsr.clone(),
             )
             for _ in range(self._max_voices)
         )

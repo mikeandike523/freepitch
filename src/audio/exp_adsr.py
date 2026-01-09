@@ -32,6 +32,16 @@ class ExpADSR:
     def register_enter_idle_handler(self,handler: Callable[[],None]):
         self.enter_idle_handlers.append(handler)
 
+    def clone(self) -> "ExpADSR":
+        return ExpADSR(
+            sample_rate=self.sample_rate,
+            attack_s=self.attack_s,
+            decay_s=self.decay_s,
+            sustain_level=self.sustain_level,
+            release_s=self.release_s,
+            num_tau=self.num_tau,
+        )
+
     def reset(self) -> None:
         self.stage = ADSRStage.IDLE
         self.value = 0.0

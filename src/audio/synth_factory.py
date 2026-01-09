@@ -1,8 +1,7 @@
 from dataclasses import dataclass
 import math
-from typing import Callable
 
-from src.audio.core import AudioBuffer
+from src.audio.core import AudioBuffer, CallbackSynth
 from src.audio.exp_adsr import ExpADSR
 from src.audio.helpers.create_synth import create_synth
 
@@ -56,7 +55,7 @@ def build_synth_factories(
     adsr: tuple[float, float, float, float],
     *,
     num_tau: float = 5.0,
-) -> tuple[Callable[[], object], Callable[[], ExpADSR]]:
+) -> tuple[CallbackSynth[CustomState, None], ExpADSR]:
     wave_fn = _WAVE_SHAPES.get(wave_shape)
     if wave_fn is None:
         raise ValueError(f"Unsupported wave shape: {wave_shape}")
@@ -64,7 +63,11 @@ def build_synth_factories(
     attack, decay, sustain, release = adsr
 
     def process_callback(
-        sample_rate: int, n: int, num_samples: int, state: CustomState
+        sample_rate: int,
+        n: int,
+        num_samples: int,
+        state: CustomState,
+        config: None,
     ) -> AudioBuffer:
         buffer = []
         for i in range(num_samples):
@@ -74,15 +77,14 @@ def build_synth_factories(
             buffer.append((value, value))
         return buffer
 
-    def create_new_synth():
-        return create_synth(
-            sample_rate,
-            CustomState(pitch=0.0, volume=1.0, note_id=-1),
-            process_callback,
-            reset_callback=None,
-        )
+    synth = create_synth(
+        sample_rate,
+        CustomState(pitch=0.0, volume=1.0, note_id=-1),
+        None,
+        process_callback,
+        reset_callback=None,
+    )
 
-    def create_new_adsr():
-        return ExpADSR(sample_rate, attack, decay, sustain, release, num_tau=num_tau)
+    adsr_envelope = ExpADSR(sample_rate, attack, decay, sustain, release, num_tau=num_tau)
 
-    return create_new_synth, create_new_adsr
+    return synth, adsr_envelope

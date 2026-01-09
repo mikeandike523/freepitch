@@ -130,31 +130,31 @@ DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=B
 # SYNTHS
 # ============================================================
 
-create_new_synth_track1, create_new_adsr_track1 = build_synth_factories(
+synth_track1, adsr_track1 = build_synth_factories(
     SAMPLE_RATE,
     "triangle",
     (0.020, 0.080, 0.7, 0.180),
 )
 
-create_new_synth_track2, create_new_adsr_track2 = build_synth_factories(
+synth_track2, adsr_track2 = build_synth_factories(
     SAMPLE_RATE,
     "square",
     (0.040, 0.120, 0.6, 0.240),
 )
 
-create_new_synth_track3, create_new_adsr_track3 = build_synth_factories(
+synth_track3, adsr_track3 = build_synth_factories(
     SAMPLE_RATE,
     "saw",
     (0.010, 0.090, 0.65, 0.180),
 )
 
-create_new_synth_track4, create_new_adsr_track4 = build_synth_factories(
+synth_track4, adsr_track4 = build_synth_factories(
     SAMPLE_RATE,
     "saw",
     (0.015, 0.070, 0.55, 0.160),
 )
 
-create_new_drum_synth, drum_buffers = build_sampler_synth_factory(
+drum_synth, _drum_sampler_config = build_sampler_synth_factory(
     SAMPLE_RATE,
     DRUM_SAMPLE_PATHS,
 )
@@ -165,25 +165,25 @@ create_new_drum_synth, drum_buffers = build_sampler_synth_factory(
 # ============================================================
 
 track1 = EventScheduler(
-    SAMPLE_RATE, 16, create_new_synth_track1, create_new_adsr_track1, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track1, adsr_track1, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track2 = EventScheduler(
-    SAMPLE_RATE, 16, create_new_synth_track2, create_new_adsr_track2, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track2, adsr_track2, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track3 = EventScheduler(
-    SAMPLE_RATE, 16, create_new_synth_track3, create_new_adsr_track3, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track3, adsr_track3, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track4 = EventScheduler(
-    SAMPLE_RATE, 16, create_new_synth_track4, create_new_adsr_track4, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track4, adsr_track4, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track5 = EventScheduler(
     SAMPLE_RATE,
     8,
-    create_new_drum_synth,
+    drum_synth,
     None,
     1,
     512,
@@ -202,7 +202,7 @@ def make_state(note_name, note):
 def make_drum_state(note_name, note):
     sample_volume = DRUM_SAMPLE_VOLUMES.get(note_name.text, 1.0)
     return SamplerState(
-        buffer=drum_buffers[note_name.text],
+        sample_id=note_name.text,
         volume=note.volume * sample_volume,
         note_id=note_name.get_note_id(),
     )

@@ -6,13 +6,21 @@ from typing import Callable, Mapping
 import numpy as np
 import soundfile as sf
 
-from src.audio.core import AudioBuffer
+from src.audio.core import AudioBuffer, CallbackSynth
 from src.audio.helpers.create_synth import create_synth
 
 
 @dataclass(slots=False)
+class SamplerConfig:
+    buffers: Mapping[str, AudioBuffer]
+
+    def clone(self) -> "SamplerConfig":
+        return self
+
+
+@dataclass(slots=False)
 class SamplerState:
-    buffer: AudioBuffer
+    sample_id: str
     volume: float
     note_id: int
 
@@ -65,33 +73,39 @@ def load_audio_buffer(path: str, target_sample_rate: int) -> AudioBuffer:
 def build_sampler_synth_factory(
     sample_rate: int,
     sample_paths: Mapping[str, str],
-) -> tuple[Callable[[], object], dict[str, AudioBuffer]]:
+) -> tuple[CallbackSynth[SamplerState, SamplerConfig], SamplerConfig]:
     print(f"[sampler] Building sampler buffers ({len(sample_paths)} samples).")
     sample_buffers = {
         name: load_audio_buffer(path, sample_rate)
         for name, path in sample_paths.items()
     }
     print("[sampler] Sampler buffers ready.")
+    config = SamplerConfig(buffers=sample_buffers)
 
     def process_callback(
-        sample_rate: int, n: int, num_samples: int, state: SamplerState
+        sample_rate: int,
+        n: int,
+        num_samples: int,
+        state: SamplerState,
+        config: SamplerConfig,
     ) -> AudioBuffer:
+        buffer = config.buffers.get(state.sample_id, tuple())
         frames = []
         for i in range(num_samples):
             idx = n + i
-            if idx < len(state.buffer):
-                left, right = state.buffer[idx]
+            if idx < len(buffer):
+                left, right = buffer[idx]
                 frames.append((left * state.volume, right * state.volume))
             else:
                 frames.append((0.0, 0.0))
         return tuple(frames)
 
-    def create_new_synth():
-        return create_synth(
-            sample_rate,
-            SamplerState(buffer=tuple(), volume=1.0, note_id=-1),
-            process_callback,
-            reset_callback=None,
-        )
+    synth = create_synth(
+        sample_rate,
+        SamplerState(sample_id="", volume=1.0, note_id=-1),
+        config,
+        process_callback,
+        reset_callback=None,
+    )
 
-    return create_new_synth, sample_buffers
+    return synth, config
