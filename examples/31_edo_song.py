@@ -258,20 +258,34 @@ def make_drum_state(note_name, note):
 # MUSIC (dot-joined notation, one note per token)
 # ============================================================
 
-BASS_LINES = """
+BASS_CLIP = Clip().insert_string(
+    NOTE_PARSER,
+    """
 
-""".splitlines()
+""",
+)
 
-HARMONY_LINES = """
-""".splitlines()
+HARMONY_CLIP = Clip().insert_string(
+    NOTE_PARSER,
+    """
+""",
+)
 
-MELODY_LINES = """
-""".splitlines()
+MELODY_CLIP = Clip().insert_string(
+    NOTE_PARSER,
+    """
+""",
+)
 
-COUNTER_LINES = """
-""".splitlines()
+COUNTER_CLIP = Clip().insert_string(
+    NOTE_PARSER,
+    """
+""",
+)
 
-DRUM_LINES_A = """
+DRUM_CLIP_A = Clip().insert_string(
+    DRUM_NOTE_PARSER,
+    """
 
 # Swing drums
 
@@ -297,9 +311,12 @@ TH.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
 TH.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
 
 
-""".splitlines()
+""",
+)
 
-DRUM_LINES_B="""
+DRUM_CLIP_B = Clip().insert_string(
+    DRUM_NOTE_PARSER,
+    """
 
 RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 HO.0.e:1.0
 RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 HO.0.e:1.0
@@ -307,7 +324,8 @@ RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 HO.0.e:1.0
 RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 RS.0.e/2:1.0 RS.0.e/2:1.0
 
 
-""".splitlines()
+""",
+)
 
 
 
@@ -315,17 +333,11 @@ RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 RS.0.e/2:1.0 RS.0.e/2:1.0
 # SCHEDULE / RENDER
 # ============================================================
 
-def add_lines_to_clip(clip, lines, parser):
-    for line in lines:
-        clip.parse_and_add_notes(parser, line)
-
-
-add_lines_to_clip(clip1, BASS_LINES, NOTE_PARSER)
-add_lines_to_clip(clip2, HARMONY_LINES, NOTE_PARSER)
-add_lines_to_clip(clip3, MELODY_LINES, NOTE_PARSER)
-add_lines_to_clip(clip4, COUNTER_LINES, NOTE_PARSER)
-add_lines_to_clip(clip5, DRUM_LINES_A, DRUM_NOTE_PARSER)
-add_lines_to_clip(clip5, DRUM_LINES_B, DRUM_NOTE_PARSER)
+clip1.add_subclip_at(BASS_CLIP, 0.0)
+clip2.add_subclip_at(HARMONY_CLIP, 0.0)
+clip3.add_subclip_at(MELODY_CLIP, 0.0)
+clip4.add_subclip_at(COUNTER_CLIP, 0.0)
+clip5.add_subclip_at(DRUM_CLIP_A, 0.0).add_subclip_at(DRUM_CLIP_B, 0.0)
 
 track1.schedule_clip(NOTE_PARSER.note_name, make_state)
 track2.schedule_clip(NOTE_PARSER.note_name, make_state)

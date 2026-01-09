@@ -27,25 +27,49 @@ class Clip:
         text: str,
         *,
         dur_env: dict[str, float] | None = None,
-    ) -> None:
+    ) -> "Clip":
         acc = self._cursor
         for note in parser.parse_lines(text, dur_env=dur_env):
             self.notes.append(ClipNote(acc, note))
             acc += note.duration
         self._cursor = acc
         self._sync_duration(acc)
+        return self
 
-    def add_subclip_at(self, clip: "Clip", start_time: float) -> None:
+    def insert_string(
+        self,
+        parser: NoteParser,
+        text: str,
+        *,
+        dur_env: dict[str, float] | None = None,
+    ) -> "Clip":
+        return self.parse_and_add_notes(parser, text, dur_env=dur_env)
+
+    def insert_lines(
+        self,
+        parser: NoteParser,
+        lines: Iterable[str],
+        *,
+        dur_env: dict[str, float] | None = None,
+    ) -> "Clip":
+        for line in lines:
+            self.parse_and_add_notes(parser, line, dur_env=dur_env)
+        return self
+
+    def add_subclip_at(self, clip: "Clip", start_time: float) -> "Clip":
         for clip_note in clip.notes:
             self.notes.append(ClipNote(start_time + clip_note.start, clip_note.note))
         self._sync_duration(start_time + clip.duration)
+        return self
 
-    def add_subclip_next(self, clip: "Clip") -> None:
+    def add_subclip_next(self, clip: "Clip") -> "Clip":
         self.add_subclip_at(clip, self._cursor)
         self._cursor = self.get_end_time()
+        return self
 
-    def seek(self, position: float = 0.0) -> None:
+    def seek(self, position: float = 0.0) -> "Clip":
         self._cursor = position
+        return self
 
     def _sync_duration(self, candidate_end: float) -> None:
         if candidate_end > self.duration:
