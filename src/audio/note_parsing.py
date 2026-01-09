@@ -123,11 +123,14 @@ class NoteParser:
         self._reference_c_freq = reference_c_freq
         quarter = 60 / bpm
         eighth = quarter / 2
+        half= quarter * 2
         self._duration_env_base = {
             "q": quarter,
             "e": eighth,
+            "h": half,
             "QUARTER": quarter,
             "EIGHTH": eighth,
+            "HALF": half,
             "BPM": bpm,
         }
 
