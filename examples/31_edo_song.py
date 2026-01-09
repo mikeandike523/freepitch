@@ -104,7 +104,7 @@ DRUM_CONFIG_KEYS = {
     "S": "snare",
     "HC": "hat_closed",
     "HO": "hat_open",
-    "R": "rimshot",
+    "RS": "rimshot",
     "CL": "clap",
     "TL": "tom_low",
     "TM": "tom_mid",
@@ -227,13 +227,45 @@ MELODY_LINES = """
 COUNTER_LINES = """
 """.splitlines()
 
-DRUM_LINES = """
+DRUM_LINES_A = """
 
 # Swing drums
+
+# Intro
 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
 K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
 
+K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
+K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
+
+K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e:1.0 K.0.e:1.0 HC.0.e*2/3:1.0
+K.0.e*(1/3+2/3):1.0 K.0.e*1/3:1.0 HC.0.e:1.0
+
+TH.0.e/3:1.0 TL.0.e/3:1.0 TM.0.e/3:1.0
+TM.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
+
+TH.0.e/3:1.0 TL.0.e/3:1.0 TM.0.e/3:1.0
+TM.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
+
+TH.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
+TH.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
+TH.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
+TH.0.e/3:1.0 TM.0.e/3:1.0 TM.0.e/3:1.0
+
+
 """.splitlines()
+
+DRUM_LINES_B="""
+
+RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 HO.0.e:1.0
+RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 HO.0.e:1.0
+RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 HO.0.e:1.0
+RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 RS.0.e/2:1.0 RS.0.e/2:1.0
+
+
+""".splitlines()
+
+
 
 # ============================================================
 # SCHEDULE / RENDER
@@ -280,7 +312,17 @@ for line in COUNTER_LINES:
     )
 
 acc = 0.0
-for line in DRUM_LINES:
+for line in DRUM_LINES_A:
+    acc += schedule_parsed_notes(
+        track5,
+        acc,
+        DRUM_NOTE_PARSER.parse_lines(line),
+        DRUM_NOTE_PARSER.note_name,
+        make_drum_state,
+    )
+
+acc = 0.0
+for line in DRUM_LINES_B:
     acc += schedule_parsed_notes(
         track5,
         acc,
