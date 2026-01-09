@@ -122,5 +122,9 @@ class Master:
         self._tracks = list(tracks)
 
     def render_collect(self):
-        rendered = ((track.volume, track.render_collect()) for track in self._tracks)
+        # rendered = ((track.volume, track.render_collect()) for track in self._tracks)
+        rendered = []
+        for track in self._tracks:
+            print(f"Rendering track: {track.name}")
+            rendered.append((track.volume, track.render_collect()))
         return mix(rendered)
