@@ -1,6 +1,6 @@
 from collections import defaultdict
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum, auto
 import json
 import math
@@ -159,6 +159,48 @@ class EventBin:
 
         return EventBin(simple_events)
         
+
+def _format_data_one_line(value: object) -> str:
+    if is_dataclass(value):
+        field_pairs = ", ".join(
+            f"{field.name}={_format_data_one_line(getattr(value, field.name))}"
+            for field in fields(value)
+        )
+        return f"{value.__class__.__name__}({field_pairs})"
+    if isinstance(value, dict):
+        items = ", ".join(
+            f"{_format_data_one_line(key)}: {_format_data_one_line(val)}"
+            for key, val in value.items()
+        )
+        return f"{{{items}}}"
+    if isinstance(value, (list, tuple)):
+        items = ", ".join(_format_data_one_line(item) for item in value)
+        bracket_left, bracket_right = ("[", "]") if isinstance(value, list) else ("(", ")")
+        return f"{bracket_left}{items}{bracket_right}"
+    if isinstance(value, str):
+        return repr(value)
+    return repr(value)
+
+
+def _format_event(event: "Event") -> str:
+    return f"{event.kind.name}({_format_data_one_line(event.data)})"
+
+
+def _format_remaining_bins(remaining_bins: Dict[int, EventBin]) -> str:
+    lines = ["Remaining Bins:"]
+    if not remaining_bins:
+        lines.append("  (none)")
+        return "\n".join(lines)
+    for bin_index, event_bin in remaining_bins.items():
+        lines.append(f"  {bin_index}:")
+        if not event_bin.events:
+            lines.append("    (empty)")
+            continue
+        for note_id, events_for_note_id in sorted(event_bin.events.items()):
+            events_text = ", ".join(_format_event(event) for event in events_for_note_id)
+            lines.append(f"    note_id={note_id}: [{events_text}]")
+    return "\n".join(lines)
+
 
 
 @dataclass(slots=False)
@@ -404,7 +446,7 @@ to throw error if not true.
             )
             return
         
-        print("Remaining Bins: ", remaining_bins)
+        print(_format_remaining_bins(remaining_bins))
 
         last_note_off_sample_index: Optional[int] = None
         last_event_sample_index = max(remaining_bins.keys())
