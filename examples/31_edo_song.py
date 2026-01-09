@@ -164,7 +164,7 @@ drum_sampler_synth, _drum_sampler_synth_config = build_sampler_synth_factory(
 
 bass_track = Track(
     "bass",
-    10 ** (-3 / 20),
+    10 ** (-1.5 / 20),
     bass_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=16,
@@ -204,7 +204,7 @@ melody_track = Track(
 
 drum_track = Track(
     "drums",
-    10 ** (-3 / 20),
+    10 ** (-9 / 20),
     drum_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=8,
@@ -240,7 +240,10 @@ def make_drum_state(note_name, note):
 bass_clip_1 = Clip().insert_string(
     NOTE_PARSER,
     """
-
+A.2.e:1.0 C.3.e:1.0 E.3.e:1.0 G.3.e:1.0
+A.3.e:1.0 Ed.3.e:1.0 Eb.3.e:1.0 C.3.e:1.0
+Bdb.2.e:1.0 C.3.e:1.0 Bb.2.e:1.0 G.2.e:1.0
+A.2.e:1.0 E.2.e:1.0 Dt.2.e:1.0 E.2.e:1.0
 """,
 )
 
@@ -307,7 +310,7 @@ drum_clip_1 = Clip().add_subclip_at(DRUM_CLIP_A, 0.0).add_subclip_at(DRUM_CLIP_B
 # SCHEDULE / RENDER
 # ============================================================
 
-bass_track_root_clip.add_subclip_at(bass_clip_1, 0.0)
+bass_track_root_clip.add_subclip_at(bass_clip_1, drum_clip_1.duration)
 harmony_track_root_clip.add_subclip_at(harmony_clip_1, 0.0)
 meloy_track_root_clip.add_subclip_at(melody_clip_1, 0.0)
 drum_track_root_clip.add_subclip_next(drum_clip_1).add_subclip_next(drum_clip_1)
