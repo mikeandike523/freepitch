@@ -141,7 +141,7 @@ drum_track_root_clip = Clip()
 synth_for_bass, adsr_for_bass = build_synth_factories(
     SAMPLE_RATE,
     "triangle",
-    (0.020, 0.080, 0.7, 0.180),
+    (0.010, 0.050, 0.6, 0.010),
 )
 
 synth_for_harmony, adsr_for_harmony = build_synth_factories(
@@ -171,12 +171,12 @@ bass_track = Track(
     adsr_factory=adsr_for_bass,
     event_bin_width=EVENT_BIN_WIDTH,
     block_size=512,
-    retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
+    retrigger_mode=RetriggerMode.CUT_TAILS,
 )
 
 harmony_track = Track(
     "harmony",
-    10 ** (-16.5 / 20),
+    10 ** (-18 / 20),
     harmony_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=16,
@@ -189,7 +189,7 @@ harmony_track = Track(
 
 melody_track = Track(
     "melody",
-    10 ** (-16.5 / 20),
+    10 ** (-18 / 20),
     melody_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=16,
@@ -202,7 +202,7 @@ melody_track = Track(
 
 drum_track = Track(
     "drums",
-    10 ** (-9 / 20),
+    10 ** (-12 / 20),
     drum_track_root_clip,
     sample_rate=SAMPLE_RATE,
     polyphony=8,
@@ -241,7 +241,20 @@ bass_clip_1 = Clip().insert_string(
 A.2.e:1.0 C.3.e:1.0 E.3.e:1.0 G.3.e:1.0
 A.3.e:1.0 Ed.3.e:1.0 Eb.3.e:1.0 C.3.e:1.0
 Bdb.2.e:1.0 C.3.e:1.0 Bb.2.e:1.0 G.2.e:1.0
-A.2.e:1.0 E.2.e:1.0 Dt.2.e:1.0 E.2.e:1.0
+A.2.e*1.5:1.0 A.2.e*0.5:1.5 A.2.e*2
+R.e E.3.e D#t.3.e Cb.2.e D#.3.e A.2.e
+Bt.2.e C.3.e Ab.2.e F.2.e
+G.2.e Cb.2.e
+A.2.e*2 E.2.e*2
+
+A.2.e:1.0 C.3.e:1.0 E.3.e:1.0 G.3.e:1.0
+A.3.e:1.0 Ed.3.e:1.0 Eb.3.e:1.0 C.3.e:1.0
+Bdb.2.e:1.0 C.3.e:1.0 Bb.2.e:1.0 G.2.e:1.0
+A.2.e*1.5:1.0 A.2.e*0.5 A.2.e*2
+R.e E.3.e D#t.3.e Cb.2.e D#.3.e A.2.e
+Bt.2.e C.3.e E.2.e A.2.e
+G.2.e F.2.e
+A.2.e*1.5:1.0 A.2.e*0.5:1.5 A.2.e*2
 """,
 )
 
@@ -250,34 +263,14 @@ A.2.e:1.0 E.2.e:1.0 Dt.2.e:1.0 E.2.e:1.0
 harmony_clip_1 = Clip().insert_string(
     NOTE_PARSER,
     """
-A.3.q:0.8 E.4.q:0.8 G.4.q:0.8 C.5.q:0.8
-A.3.h:0.8 E.4.h:0.8
 
-A.3.q:0.8 Ed.4.q:0.8 G.4.q:0.8 C.5.q:0.8
-A.3.h:0.8 Ed.4.h:0.8
-
-Bdb.3.q:0.8 F.4.q:0.8 Bb.4.q:0.8 D.5.q:0.8
-Bdb.3.h:0.8 F.4.h:0.8
-
-A.3.q:0.8 E.4.q:0.8 Dt.4.q:0.8 E.4.q:0.8
-A.3.h:0.8 E.4.h:0.8
 """,
 )
 
 melody_clip_1 = Clip().insert_string(
     NOTE_PARSER,
     """
-E.5.e:1.0 G.5.e:1.0 A.5.q:1.0
-C.6.e:1.0 Bdb.5.e:1.0 A.5.q:1.0
 
-G.5.e:1.0 A.5.e:1.0 Ed.6.q:1.0
-E.6.e:1.0 Dt.6.e:1.0 C.6.q:1.0
-
-Bb.5.e:1.0 D.6.e:1.0 F.6.q:1.0
-G.6.e:1.0 F.6.e:1.0 D.6.q:1.0
-
-E.5.e:1.0 G.5.e:1.0 A.5.e:1.0 C.6.e:1.0
-Dt.6.q:1.0 A.5.q:1.0
 """,
 )
 
@@ -335,11 +328,13 @@ drum_clip_1 = Clip().add_subclip_at(DRUM_CLIP_A, 0.0).add_subclip_at(DRUM_CLIP_B
 bass_track_root_clip.add_subclip_at(bass_clip_1, drum_clip_1.duration)
 
 # Harmony + melody start at the beginning (you can offset if you want them to wait for the intro too).
-harmony_track_root_clip.add_subclip_at(harmony_clip_1, 0.0)
-melody_track_root_clip.add_subclip_at(melody_clip_1, 0.0)
+harmony_track_root_clip.add_subclip_at(harmony_clip_1, drum_clip_1.duration)
+melody_track_root_clip.add_subclip_at(melody_clip_1, drum_clip_1.duration)
 
 # Drums: two back-to-back repeats of the combined A+B layer
-drum_track_root_clip.add_subclip_next(drum_clip_1).add_subclip_next(drum_clip_1)
+drum_track_root_clip.add_subclip_next(drum_clip_1).add_subclip_next(
+    drum_clip_1
+).add_subclip_next(drum_clip_1).add_subclip_next(drum_clip_1)
 
 # === Event scheduling for each track ===
 bass_track.schedule_own_root_clip(NOTE_PARSER.note_name, make_state)
