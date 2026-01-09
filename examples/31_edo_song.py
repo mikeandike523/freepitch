@@ -1,8 +1,10 @@
 import json
 import os
+import shutil
+import struct
 
 from src.audio.stereo_audio import StereoAudio
-from src.audio.note_parsing import build_note_parser
+from src.audio.note_parsing import NoteParser, build_note_parser
 from src.audio.sampler_synth import SamplerState, build_sampler_synth_factory
 from src.audio.synth_factory import CustomState, build_synth_factories
 from src.audio.arrangement import Clip, Master, Track
@@ -127,6 +129,117 @@ DRUM_SAMPLE_VOLUMES = {
 DRUM_NAMES_TO_INDEX = {name: idx for idx, name in enumerate(DRUM_SAMPLE_PATHS)}
 DRUM_SCALE = tuple(1.0 for _ in DRUM_NAMES_TO_INDEX)
 DRUM_NOTE_PARSER = build_note_parser(DRUM_NAMES_TO_INDEX, DRUM_SCALE, 1.0, bpm=BPM)
+
+TICKS_PER_BEAT = 480
+
+
+def ensure_midi_output_dir(output_path: str) -> str:
+    base_path, _ = os.path.splitext(output_path)
+    midi_dir = f"{base_path}_midi"
+    if os.path.isdir(midi_dir):
+        shutil.rmtree(midi_dir)
+    elif os.path.exists(midi_dir):
+        os.remove(midi_dir)
+    os.makedirs(midi_dir, exist_ok=True)
+    return midi_dir
+
+
+def _encode_vlq(value: int) -> bytes:
+    if value < 0:
+        raise ValueError("VLQ value must be non-negative")
+    buffer = value & 0x7F
+    out = [buffer]
+    value >>= 7
+    while value:
+        buffer = (value & 0x7F) | 0x80
+        out.insert(0, buffer)
+        value >>= 7
+    return bytes(out)
+
+
+def _clamp_midi_note(note_id: int) -> int:
+    if note_id < 0:
+        return 0
+    if note_id > 127:
+        return 127
+    return note_id
+
+
+def _seconds_to_ticks(seconds: float, bpm: float) -> int:
+    beats = seconds * bpm / 60
+    return int(round(beats * TICKS_PER_BEAT))
+
+
+def write_single_track_midi(
+    path: str,
+    events: list[tuple[float, float, int, float]],
+    bpm: float,
+    *,
+    track_name: str,
+    channel: int,
+) -> None:
+    tempo = int(round(60_000_000 / bpm))
+    track_events: list[tuple[int, int, bytes]] = []
+
+    if track_name:
+        name_bytes = track_name.encode("utf-8")
+        track_events.append(
+            (
+                0,
+                0,
+                b"\xFF\x03" + _encode_vlq(len(name_bytes)) + name_bytes,
+            )
+        )
+
+    track_events.append((0, 1, b"\xFF\x51\x03" + tempo.to_bytes(3, "big")))
+
+    for start, duration, note_id, volume in events:
+        if duration <= 0:
+            continue
+        start_tick = _seconds_to_ticks(start, bpm)
+        end_tick = _seconds_to_ticks(start + duration, bpm)
+        midi_note = _clamp_midi_note(note_id)
+        velocity = int(round(volume * 127))
+        if velocity <= 0:
+            velocity = 1
+        if velocity > 127:
+            velocity = 127
+        track_events.append(
+            (start_tick, 3, bytes([0x90 | channel, midi_note, velocity]))
+        )
+        track_events.append((end_tick, 2, bytes([0x80 | channel, midi_note, 0])))
+
+    track_events.sort(key=lambda item: (item[0], item[1]))
+    track_data = bytearray()
+    last_tick = 0
+    for tick, _order, payload in track_events:
+        delta = tick - last_tick
+        track_data.extend(_encode_vlq(delta))
+        track_data.extend(payload)
+        last_tick = tick
+    track_data.extend(_encode_vlq(0))
+    track_data.extend(b"\xFF\x2F\x00")
+
+    header = b"MThd" + struct.pack(">LHHH", 6, 0, 1, TICKS_PER_BEAT)
+    track_chunk = b"MTrk" + struct.pack(">L", len(track_data)) + track_data
+    with open(path, "wb") as handle:
+        handle.write(header)
+        handle.write(track_chunk)
+
+
+def collect_track_events(
+    clip: Clip, parser: NoteParser
+) -> list[tuple[float, float, int, float]]:
+    events: list[tuple[float, float, int, float]] = []
+    for clip_note in clip.notes:
+        note = clip_note.note
+        if note.name is None:
+            continue
+        note_name = parser.note_name(note.name, note.octave)
+        note_id = int(note_name.get_note_id())
+        start_time = clip.start_time + clip_note.start
+        events.append((start_time, note.duration, note_id, note.volume))
+    return events
 
 # ============================================================
 # TRACKS / SCHEDULERS
@@ -342,6 +455,39 @@ harmony_track.schedule_own_root_clip(NOTE_PARSER.note_name, make_state)
 melody_track.schedule_own_root_clip(NOTE_PARSER.note_name, make_state)
 drum_track.schedule_own_root_clip(DRUM_NOTE_PARSER.note_name, make_drum_state)
 
+# === MIDI export (one file per track) ===
+OUTPUT_WAV_PATH = "output_files/31_edo_song.wav"
+MIDI_OUTPUT_DIR = ensure_midi_output_dir(OUTPUT_WAV_PATH)
+
+write_single_track_midi(
+    os.path.join(MIDI_OUTPUT_DIR, "bass.mid"),
+    collect_track_events(bass_track_root_clip, NOTE_PARSER),
+    BPM,
+    track_name="bass",
+    channel=0,
+)
+write_single_track_midi(
+    os.path.join(MIDI_OUTPUT_DIR, "harmony.mid"),
+    collect_track_events(harmony_track_root_clip, NOTE_PARSER),
+    BPM,
+    track_name="harmony",
+    channel=0,
+)
+write_single_track_midi(
+    os.path.join(MIDI_OUTPUT_DIR, "melody.mid"),
+    collect_track_events(melody_track_root_clip, NOTE_PARSER),
+    BPM,
+    track_name="melody",
+    channel=0,
+)
+write_single_track_midi(
+    os.path.join(MIDI_OUTPUT_DIR, "drums.mid"),
+    collect_track_events(drum_track_root_clip, DRUM_NOTE_PARSER),
+    BPM,
+    track_name="drums",
+    channel=9,
+)
+
 # === Mixdown/render ===
 master = Master([bass_track, harmony_track, melody_track, drum_track])
 frames = master.render_collect()
@@ -349,4 +495,4 @@ frames = master.render_collect()
 print("Playing...")
 se = StereoAudio(frames, SAMPLE_RATE)
 se.play(blocking=True)
-se.export("output_files/31_edo_song.wav", 24)
+se.export(OUTPUT_WAV_PATH, 24)
