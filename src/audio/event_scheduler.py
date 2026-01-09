@@ -338,11 +338,11 @@ to throw error if not true.
         quantized_sample_index = None
         if kind == EventKind.NOTE_ON:
             quantized_sample_index = (
-                math.floor(time * self._sample_rate / self._tick_size) * self._tick_size
+                math.ceil(time * self._sample_rate / self._tick_size) * self._tick_size
             )
         else:
             quantized_sample_index = (
-                math.ceil(time * self._sample_rate / self._tick_size) * self._tick_size
+                math.floor(time * self._sample_rate / self._tick_size) * self._tick_size
             )
         self.event_bins[quantized_sample_index].add_event(Event(kind=kind, data=data))
 
