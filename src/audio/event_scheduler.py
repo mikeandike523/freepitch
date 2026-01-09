@@ -334,7 +334,7 @@ to throw error if not true.
 
         self.event_bins = defaultdict(lambda: EventBin(None))
 
-    def add_event[D](self, time: float, kind: EventKind, data: D):
+    def add_event(self, time: float, kind: EventKind, data: D):
         quantized_sample_index = None
         if kind == EventKind.NOTE_ON:
             quantized_sample_index = (

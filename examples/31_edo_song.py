@@ -165,19 +165,19 @@ drum_synth, _drum_sampler_config = build_sampler_synth_factory(
 # ============================================================
 
 track1 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track1, adsr_track1, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track1, adsr_track1, 8, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track2 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track2, adsr_track2, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track2, adsr_track2, 8, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track3 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track3, adsr_track3, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track3, adsr_track3, 8, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track4 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track4, adsr_track4, 1, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+    SAMPLE_RATE, 16, synth_track4, adsr_track4, 8, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
 )
 
 track5 = EventScheduler(
