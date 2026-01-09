@@ -29,7 +29,7 @@ class Synth(Protocol[S]):
     def reset(self) -> None: ...
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class CallbackSynth(Generic[S]):
     _sample_rate: int
     state: S = field()   # user state kept separate

@@ -9,7 +9,7 @@ from src.audio.core import AudioBuffer, CallbackSynth, ProcessCallback, ResetCal
 S = TypeVar("S")
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class ADSRAugmentedState(Generic[S]):
     """Internal synth state: user state + ADSR instance (stored by reference)."""
     custom: S

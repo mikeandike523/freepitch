@@ -8,7 +8,7 @@ from src.audio.adsr_types import ADSRStage
 
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class ExpADSR:
     sample_rate: int
     attack_s: float

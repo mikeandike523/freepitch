@@ -10,7 +10,7 @@ from src.audio.core import AudioBuffer
 from src.audio.helpers.create_synth import create_synth
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class SamplerState:
     buffer: AudioBuffer
     volume: float

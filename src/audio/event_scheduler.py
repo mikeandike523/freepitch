@@ -105,7 +105,7 @@ class RetriggerMode(Enum):
 D = TypeVar("D")
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class Event[D]:
     kind: EventKind
     data: D
@@ -113,9 +113,10 @@ class Event[D]:
     @property
     def note_id(self) -> int:
         return self.data.note_id
+    
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class EventBin:
     events: Dict[int, List[Event]]  # sort events by note id
 
@@ -157,9 +158,10 @@ class EventBin:
                 simple_events[note_id].append(copy.deepcopy(ons_for_note_id[0]))
 
         return EventBin(simple_events)
+        
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class EventScheduler:
     """
 
@@ -395,6 +397,7 @@ to throw error if not true.
             sorted(remaining_bins.items(), key=lambda item: item[0])
         )
 
+
         if not remaining_bins:
             warnings.warn(
                 "EventScheduler.render received no events after simplification; "
@@ -402,6 +405,8 @@ to throw error if not true.
                 RuntimeWarning,
             )
             return
+        
+        print("Remaining Bins: ", remaining_bins)
 
         last_note_off_sample_index: Optional[int] = None
         last_event_sample_index = max(remaining_bins.keys())

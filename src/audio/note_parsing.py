@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class ParsedNote:
     name: str | None
     octave: int | None
@@ -12,7 +12,7 @@ class ParsedNote:
     volume: float = 1.0
 
 
-@dataclass(slots=True)
+@dataclass(slots=False)
 class NoteName:
     text: str
     octave: int
