@@ -27,7 +27,7 @@ chmod +x ./__inenv
 
 mkdir -p output_files
 mkdir -p input_files
-mkdir -p agent_scratchpad
+mkdir -p scratchpad
 
 
 # Philosophy: "During setup, we maintain for the first time"
