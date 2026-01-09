@@ -1,13 +1,12 @@
 import json
 import os
 
-from src.audio.mixing import mix
 from src.audio.stereo_audio import StereoAudio
-from src.audio.event_scheduler import EventScheduler, RetriggerMode
 from src.audio.note_parsing import build_note_parser
-from src.audio.note_sequence import schedule_parsed_notes
 from src.audio.sampler_synth import SamplerState, build_sampler_synth_factory
 from src.audio.synth_factory import CustomState, build_synth_factories
+from src.audio.arrangement import Clip, Master, Track
+from src.audio.event_scheduler import RetriggerMode
 
 SAMPLE_RATE = 48_000
 
@@ -166,30 +165,75 @@ drum_synth, _drum_sampler_config = build_sampler_synth_factory(
 # TRACKS / SCHEDULERS
 # ============================================================
 
-track1 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track1, adsr_track1, EVENT_BIN_WIDTH, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+clip1 = Clip()
+clip2 = Clip()
+clip3 = Clip()
+clip4 = Clip()
+clip5 = Clip()
+
+track1 = Track(
+    "bass",
+    10 ** (-3 / 20),
+    clip1,
+    sample_rate=SAMPLE_RATE,
+    polyphony=16,
+    synth_factory=synth_track1,
+    adsr_factory=adsr_track1,
+    event_bin_width=EVENT_BIN_WIDTH,
+    block_size=512,
+    retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track2 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track2, adsr_track2, EVENT_BIN_WIDTH, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+track2 = Track(
+    "harmony",
+    10 ** (-16.5 / 20),
+    clip2,
+    sample_rate=SAMPLE_RATE,
+    polyphony=16,
+    synth_factory=synth_track2,
+    adsr_factory=adsr_track2,
+    event_bin_width=EVENT_BIN_WIDTH,
+    block_size=512,
+    retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track3 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track3, adsr_track3, EVENT_BIN_WIDTH, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+track3 = Track(
+    "melody",
+    10 ** (-16.5 / 20),
+    clip3,
+    sample_rate=SAMPLE_RATE,
+    polyphony=16,
+    synth_factory=synth_track3,
+    adsr_factory=adsr_track3,
+    event_bin_width=EVENT_BIN_WIDTH,
+    block_size=512,
+    retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track4 = EventScheduler(
-    SAMPLE_RATE, 16, synth_track4, adsr_track4, EVENT_BIN_WIDTH, 512, RetriggerMode.ATTACK_FROM_CURRENT_LEVEL
+track4 = Track(
+    "counterpoint",
+    10 ** (-16.5 / 20),
+    clip4,
+    sample_rate=SAMPLE_RATE,
+    polyphony=16,
+    synth_factory=synth_track4,
+    adsr_factory=adsr_track4,
+    event_bin_width=EVENT_BIN_WIDTH,
+    block_size=512,
+    retrigger_mode=RetriggerMode.ATTACK_FROM_CURRENT_LEVEL,
 )
 
-track5 = EventScheduler(
-    SAMPLE_RATE,
-    8,
-    drum_synth,
-    None,
-    1,
-    512,
-    RetriggerMode.CUT_TAILS,
+track5 = Track(
+    "drums",
+    10 ** (-3 / 20),
+    clip5,
+    sample_rate=SAMPLE_RATE,
+    polyphony=8,
+    synth_factory=drum_synth,
+    adsr_factory=None,
+    event_bin_width=1,
+    block_size=512,
+    retrigger_mode=RetriggerMode.CUT_TAILS,
 )
 
 
@@ -271,81 +315,26 @@ RS.0.q:1.0 RS.0.q:1.0 RS.0.q:1.0 RS.0.e:1.0 RS.0.e/2:1.0 RS.0.e/2:1.0
 # SCHEDULE / RENDER
 # ============================================================
 
-acc = 0.0
-for line in BASS_LINES:
-    acc += schedule_parsed_notes(
-        track1,
-        acc,
-        NOTE_PARSER.parse_lines(line),
-        NOTE_PARSER.note_name,
-        make_state,
-    )
+def add_lines_to_clip(clip, lines, parser):
+    for line in lines:
+        clip.parse_and_add_notes(parser, line)
 
-acc = 0.0
-for line in HARMONY_LINES:
-    acc += schedule_parsed_notes(
-        track2,
-        acc,
-        NOTE_PARSER.parse_lines(line),
-        NOTE_PARSER.note_name,
-        make_state,
-    )
 
-acc = 0.0
-for line in MELODY_LINES:
-    acc += schedule_parsed_notes(
-        track3,
-        acc,
-        NOTE_PARSER.parse_lines(line),
-        NOTE_PARSER.note_name,
-        make_state,
-    )
+add_lines_to_clip(clip1, BASS_LINES, NOTE_PARSER)
+add_lines_to_clip(clip2, HARMONY_LINES, NOTE_PARSER)
+add_lines_to_clip(clip3, MELODY_LINES, NOTE_PARSER)
+add_lines_to_clip(clip4, COUNTER_LINES, NOTE_PARSER)
+add_lines_to_clip(clip5, DRUM_LINES_A, DRUM_NOTE_PARSER)
+add_lines_to_clip(clip5, DRUM_LINES_B, DRUM_NOTE_PARSER)
 
-acc = 0.0
-for line in COUNTER_LINES:
-    acc += schedule_parsed_notes(
-        track4,
-        acc,
-        NOTE_PARSER.parse_lines(line),
-        NOTE_PARSER.note_name,
-        make_state,
-    )
+track1.schedule_clip(NOTE_PARSER.note_name, make_state)
+track2.schedule_clip(NOTE_PARSER.note_name, make_state)
+track3.schedule_clip(NOTE_PARSER.note_name, make_state)
+track4.schedule_clip(NOTE_PARSER.note_name, make_state)
+track5.schedule_clip(DRUM_NOTE_PARSER.note_name, make_drum_state)
 
-acc = 0.0
-for line in DRUM_LINES_A:
-    acc += schedule_parsed_notes(
-        track5,
-        acc,
-        DRUM_NOTE_PARSER.parse_lines(line),
-        DRUM_NOTE_PARSER.note_name,
-        make_drum_state,
-    )
-
-acc = 0.0
-for line in DRUM_LINES_B:
-    acc += schedule_parsed_notes(
-        track5,
-        acc,
-        DRUM_NOTE_PARSER.parse_lines(line),
-        DRUM_NOTE_PARSER.note_name,
-        make_drum_state,
-    )
-
-frames1 = track1.render_collect()
-frames2 = track2.render_collect()
-frames3 = track3.render_collect()
-frames4 = track4.render_collect()
-frames5 = track5.render_collect()
-
-frames = mix(
-    (
-        (10 ** (-3 / 20), frames1), # bass
-        (10 ** (-16.5 / 20), frames2), # harmony
-        (10 ** (-16.5 / 20), frames3), # melody
-        (10 ** (-16.5 / 20), frames4), # counterpoint
-        (10 ** (-3 / 20), frames5),  # drums
-    )
-)
+master = Master([track1, track2, track3, track4, track5])
+frames = master.render_collect()
 
 print("Playing...")
 se = StereoAudio(frames, SAMPLE_RATE)
