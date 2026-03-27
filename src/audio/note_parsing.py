@@ -1,7 +1,10 @@
 import ast
 import operator as op
+import re
 from dataclasses import dataclass
 from typing import Iterable
+
+_INTERVAL_RE = re.compile(r'^([+-]\d+)$')
 
 
 @dataclass(slots=False)
@@ -117,6 +120,8 @@ class NoteParser:
         reference_c_freq: float,
         *,
         bpm: float = 120,
+        sharpwards_names_to_index: dict[str, int] | None = None,
+        flatwards_names_to_index: dict[str, int] | None = None,
     ):
         self._names_to_index = names_to_index
         self._scale = scale
@@ -124,6 +129,25 @@ class NoteParser:
         quarter = 60 / bpm
         eighth = quarter / 2
         half= quarter * 2
+
+        # Reverse mappings for interval resolution
+        if sharpwards_names_to_index is not None:
+            self._index_to_sharp_name: dict[int, str] = {
+                idx: name for name, idx in sharpwards_names_to_index.items()
+            }
+        else:
+            self._index_to_sharp_name = {}
+            for name, idx in names_to_index.items():
+                if idx not in self._index_to_sharp_name:
+                    self._index_to_sharp_name[idx] = name
+
+        if flatwards_names_to_index is not None:
+            self._index_to_flat_name: dict[int, str] = {
+                idx: name for name, idx in flatwards_names_to_index.items()
+            }
+        else:
+            self._index_to_flat_name = self._index_to_sharp_name
+
         self._duration_env_base = {
             "q": quarter,
             "e": eighth,
@@ -168,32 +192,11 @@ class NoteParser:
         """Return list of ParsedNote entries for dot-joined notation."""
 
         rest_tokens = {"R", "-", "rest", "REST"}
+        scale_len = len(self._scale)
+        prev_step: list[int | None] = [None]
+        prev_name: list[str | None] = [None]
 
-        def parse_dot_token(token: str) -> ParsedNote:
-            if "." not in token:
-                raise ValueError(f"Bad token (missing dots): {token!r}")
-            head = token.split(".", 1)[0]
-            if head in rest_tokens:
-                _, dur_txt = token.split(".", 1)
-                if not dur_txt:
-                    raise ValueError(f"Bad rest token: {token!r}")
-                if ":" in dur_txt:
-                    raise ValueError(f"Rest tokens cannot include volume: {token!r}")
-                return ParsedNote(
-                    None,
-                    None,
-                    self.eval_duration_expr(dur_txt, env=dur_env),
-                )
-            if head not in self._names_to_index:
-                raise ValueError(f"Bad note token: {token!r}")
-            parts = token.split(".", 2)
-            if len(parts) != 3:
-                raise ValueError(f"Bad note token: {token!r}")
-            _, octave_txt, dur_txt = parts
-            if not octave_txt or not dur_txt:
-                raise ValueError(f"Bad note token: {token!r}")
-            octave = int(octave_txt)
-
+        def _parse_dur_vol(dur_txt: str, token: str) -> tuple[float, float]:
             if ":" in dur_txt:
                 dur_expr, vol_txt = dur_txt.split(":", 1)
                 if not vol_txt:
@@ -204,8 +207,55 @@ class NoteParser:
             else:
                 dur_expr = dur_txt
                 volume = 1.0
+            return self.eval_duration_expr(dur_expr, env=dur_env), volume
 
-            duration = self.eval_duration_expr(dur_expr, env=dur_env)
+        def parse_dot_token(token: str) -> ParsedNote:
+            if "." not in token:
+                raise ValueError(f"Bad token (missing dots): {token!r}")
+            head, rest = token.split(".", 1)
+            if head in rest_tokens:
+                if not rest:
+                    raise ValueError(f"Bad rest token: {token!r}")
+                if ":" in rest:
+                    raise ValueError(f"Rest tokens cannot include volume: {token!r}")
+                return ParsedNote(
+                    None,
+                    None,
+                    self.eval_duration_expr(rest, env=dur_env),
+                )
+
+            # Interval token: +N or -N relative to previous note in EDO steps
+            if _INTERVAL_RE.match(head):
+                if prev_step[0] is None:
+                    raise ValueError(
+                        f"Interval token {token!r} used before any absolute note"
+                    )
+                offset = int(head)
+                new_step = prev_step[0] + offset
+                octave, index_in_octave = divmod(new_step, scale_len)
+                if offset == 0:
+                    name = prev_name[0]
+                elif offset > 0:
+                    name = self._index_to_sharp_name[index_in_octave]
+                else:
+                    name = self._index_to_flat_name[index_in_octave]
+                duration, volume = _parse_dur_vol(rest, token)
+                prev_step[0] = new_step
+                prev_name[0] = name
+                return ParsedNote(name, octave, duration, volume)
+
+            if head not in self._names_to_index:
+                raise ValueError(f"Bad note token: {token!r}")
+            parts = token.split(".", 2)
+            if len(parts) != 3:
+                raise ValueError(f"Bad note token: {token!r}")
+            _, octave_txt, dur_txt = parts
+            if not octave_txt or not dur_txt:
+                raise ValueError(f"Bad note token: {token!r}")
+            octave = int(octave_txt)
+            duration, volume = _parse_dur_vol(dur_txt, token)
+            prev_step[0] = octave * scale_len + self._names_to_index[head]
+            prev_name[0] = head
             return ParsedNote(head, octave, duration, volume)
 
         out: list[ParsedNote] = []
@@ -229,10 +279,14 @@ def build_note_parser(
     reference_c_freq: float,
     *,
     bpm: float = 120,
+    sharpwards_names_to_index: dict[str, int] | None = None,
+    flatwards_names_to_index: dict[str, int] | None = None,
 ) -> NoteParser:
     return NoteParser(
         names_to_index,
         list(scale),
         reference_c_freq,
         bpm=bpm,
+        sharpwards_names_to_index=sharpwards_names_to_index,
+        flatwards_names_to_index=flatwards_names_to_index,
     )
